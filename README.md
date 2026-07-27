@@ -345,6 +345,10 @@ npm run dist:linux:x64:installer
 
 Every `dist:*` command clears generated `dist/` and `release/` output before
 building. Run `npm run clean:artifacts` to perform only that cleanup.
+The complete installer workflow also verifies the mandatory dependency closure
+inside every unpacked application before a release can be published. Run
+`npm run verify:packaged-dependencies` to repeat this check for existing build
+output.
 
 The macOS artifacts require the `mfe-runner-notary` Keychain profile and fail
 instead of silently distributing an unnotarized application. Windows
