@@ -1,0 +1,76 @@
+# Landing page do MFE Runner
+
+O container Caddy publica somente a landing page:
+
+```text
+https://mferunner.com/
+```
+
+Os instaladores e metadados do atualizador ficam exclusivamente nos
+[GitHub Releases](https://github.com/danielverissimo/mfe-runner/releases).
+A landing page consulta a API pública do GitHub no navegador para listar as
+releases publicadas e recomendar o instalador adequado ao sistema do visitante.
+
+## Preparação do host
+
+O servidor Ubuntu precisa ter Docker Engine e o plugin Docker Compose. O
+usuário `forge` deve poder executar `docker`.
+
+```bash
+ssh forge@mferunner.com
+docker --version
+docker compose version
+```
+
+## Deploy da landing page
+
+Execute no macOS, a partir da raiz do projeto:
+
+```bash
+npm run deploy:server
+curl --fail https://mferunner.com/healthz
+```
+
+O comando sincroniza apenas Docker Compose, Caddy e os arquivos da landing
+page. Nenhum binário é enviado para `mferunner.com`.
+
+## Publicação de uma versão
+
+Autentique o GitHub CLI uma vez:
+
+```bash
+gh auth login --hostname github.com
+gh auth status
+```
+
+Depois, gere e publique uma nova versão:
+
+```bash
+npm run dist:installers:publish
+```
+
+O comando incrementa a versão patch, limpa artefatos antigos, gera todos os
+instaladores no host macOS e cria uma release pública em
+`danielverissimo/mfe-runner`. A release permanece como rascunho enquanto os
+arquivos são enviados e só é publicada depois do upload completo.
+
+Para publicar os artefatos da versão atual sem executar outro build:
+
+```bash
+npm run publish:update
+```
+
+O repositório precisa ter uma branch padrão e a release da versão não pode
+existir. Releases publicadas são imutáveis nesse fluxo; para corrigir uma
+versão, incremente a versão e publique uma nova release.
+
+O script envia:
+
+- `latest*.yml`, usados pelo `electron-updater`;
+- DMGs e ZIPs do macOS;
+- instaladores NSIS do Windows;
+- pacotes DEB do Linux;
+- blockmaps gerados pelo electron-builder.
+
+Releases em rascunho ou marcadas como pré-release não são oferecidas pelo app
+nem pela landing page.

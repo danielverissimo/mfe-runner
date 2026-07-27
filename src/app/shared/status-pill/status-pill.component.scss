@@ -1,0 +1,49 @@
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border: 1px solid var(--runner-border);
+  border-radius: 999px;
+  color: var(--runner-text-muted);
+  background: rgb(255 255 255 / 2%);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.status--healthy,
+.status--running {
+  color: var(--runner-success);
+  border-color: rgb(40 211 155 / 22%);
+  background: rgb(40 211 155 / 7%);
+}
+
+.status--starting,
+.status--linking,
+.status--stopping {
+  color: var(--runner-info);
+  border-color: rgb(72 169 255 / 22%);
+  background: rgb(72 169 255 / 7%);
+}
+
+.status--degraded {
+  color: var(--runner-warning);
+  border-color: rgb(255 189 89 / 22%);
+  background: rgb(255 189 89 / 7%);
+}
+
+.status--failed,
+.status--conflict {
+  color: var(--runner-danger);
+  border-color: rgb(255 97 120 / 22%);
+  background: rgb(255 97 120 / 7%);
+}

@@ -1,0 +1,228 @@
+<section
+  class="logs"
+  [class.logs--expanded]="expanded"
+  [class.logs--filter-open]="sourceFilterOpen"
+  aria-label="Logs dos processos"
+>
+  <header>
+    <div>
+      <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <strong>Logs</strong>
+      @if (projectId) {
+        <span class="filter">{{ projectId }}</span>
+      }
+      @if (visualPaused) {
+        <span class="paused-label">Pausado · {{ newEntriesCount }} novos</span>
+      }
+    </div>
+    <div class="header-actions">
+      @if (!projectId && sourceOptions.length > 1) {
+        <button
+          class="source-filter-toggle"
+          type="button"
+          [class.source-filter-toggle--active]="!showAllSources"
+          [attr.aria-expanded]="sourceFilterOpen"
+          aria-controls="log-source-filter"
+          (click)="toggleSourceFilter()"
+        ><span aria-hidden="true">⌁</span> Filtrar · {{ sourceFilterLabel }}</button>
+      }
+      <button
+        class="copy-logs"
+        type="button"
+        [class.copy-logs--success]="copyState === 'copied'"
+        [class.copy-logs--error]="copyState === 'error'"
+        [disabled]="copyState === 'copying' || entries.length === 0"
+        title="Copiar a seleção, o intervalo ou todo o conteúdo filtrado"
+        (click)="copyLogs()"
+      ><span aria-hidden="true">⧉</span> {{ copyLabel }}</button>
+      <button
+        class="follow-logs"
+        type="button"
+        [class.follow-logs--active]="followOutput"
+        [attr.aria-pressed]="followOutput"
+        [disabled]="visualPaused"
+        (click)="toggleFollowOutput()"
+      >↓ Acompanhar</button>
+      @if (openable) {
+        <button class="open-logs" type="button" (click)="open.emit()">↗ Abrir em Logs</button>
+      }
+      <button class="clear-logs" type="button" (click)="clear.emit()">Limpar</button>
+    </div>
+  </header>
+
+  <div class="log-toolbar">
+    <label class="log-search">
+      <span aria-hidden="true">⌕</span>
+      <input
+        type="search"
+        maxlength="200"
+        placeholder="Pesquisar logs…"
+        [value]="searchInput"
+        (input)="updateSearch($any($event.target).value)"
+      />
+    </label>
+    <button
+      type="button"
+      [class.active]="regexMode"
+      [attr.aria-pressed]="regexMode"
+      (click)="toggleRegex()"
+    >.* Regex</button>
+    <div class="level-filter" role="group" aria-label="Filtrar por nível">
+      @for (level of levels; track level) {
+        <button
+          type="button"
+          [class.active]="selectedLevels.has(level)"
+          [attr.data-level]="level"
+          [attr.aria-pressed]="selectedLevels.has(level)"
+          (click)="toggleLevel(level)"
+        >{{ level === 'error' ? 'Erro' : level === 'warning' ? 'Warning' : 'Info' }}</button>
+      }
+    </div>
+    <button
+      type="button"
+      [class.active]="visualPaused"
+      [attr.aria-pressed]="visualPaused"
+      (click)="toggleVisualization()"
+    >{{ visualPaused ? '▶ Retomar' : 'Ⅱ Pausar' }}</button>
+    <button
+      type="button"
+      [class.active]="bookmarkedOnly"
+      [attr.aria-pressed]="bookmarkedOnly"
+      (click)="toggleBookmarkedOnly()"
+    >★ Marcados</button>
+    <div class="error-navigation">
+      <button
+        type="button"
+        title="Ir para o erro anterior"
+        aria-label="Ir para o erro anterior"
+        [disabled]="!errorEntries.length"
+        (click)="navigateError(-1)"
+      >‹</button>
+      <span>Erros {{ errorPosition }}</span>
+      <button
+        type="button"
+        title="Ir para o próximo erro"
+        aria-label="Ir para o próximo erro"
+        [disabled]="!errorEntries.length"
+        (click)="navigateError(1)"
+      >›</button>
+    </div>
+    <button
+      type="button"
+      [class.active]="rangeMode || rangeEntries.length"
+      (click)="toggleRangeMode()"
+    >⌁ {{ rangeEntries.length ? rangeEntries.length + ' linhas' : 'Intervalo' }}</button>
+    <button type="button" [disabled]="!workspaceId" (click)="openExport()">⇩ Exportar</button>
+    @if (regexError) {
+      <small class="regex-error">{{ regexError }}</small>
+    }
+  </div>
+
+  @if (sourceFilterOpen && !projectId && sourceOptions.length > 1) {
+    <div id="log-source-filter" class="source-filter-panel" role="group" aria-label="Filtrar logs por projeto">
+      <button
+        class="source-filter-option"
+        type="button"
+        [class.source-filter-option--active]="showAllSources"
+        [attr.aria-pressed]="showAllSources"
+        (click)="selectAllSources()"
+      >Todos</button>
+      @for (source of sourceOptions; track source.id) {
+        <button
+          class="source-filter-option"
+          type="button"
+          [class.source-filter-option--active]="isSourceSelected(source.id)"
+          [attr.aria-pressed]="isSourceSelected(source.id)"
+          [attr.data-source-id]="source.id"
+          (click)="toggleSource(source.id)"
+        ><span>{{ source.name }}</span><small>{{ source.logCount }}</small></button>
+      }
+    </div>
+  }
+
+  <div
+    #console
+    class="console"
+    role="log"
+    [attr.aria-live]="visualPaused ? 'off' : 'polite'"
+  >
+    @for (entry of entries; track entry.id) {
+      <div
+        class="line"
+        [class]="'line line--' + entry.stream + ' line--level-' + entry.level"
+        [class.line--bookmarked]="viewState.has(entry.id)"
+        [class.line--active-error]="activeErrorId === entry.id"
+        [class.line--range]="isInRange(entry.id)"
+        [class.line--range-mode]="rangeMode"
+        [attr.data-entry-id]="entry.id"
+        (click)="selectRangeEntry(entry)"
+      >
+        <button
+          class="bookmark"
+          type="button"
+          [class.active]="viewState.has(entry.id)"
+          [attr.aria-label]="(viewState.has(entry.id) ? 'Desmarcar ' : 'Marcar ') + 'linha importante'"
+          (click)="toggleBookmark(entry.id, $event)"
+        >{{ viewState.has(entry.id) ? '★' : '☆' }}</button>
+        <time>{{ entry.timestamp | date:'HH:mm:ss' }}</time>
+        <span class="source">[{{ entry.projectName }}]</span>
+        <span class="message">{{ entry.message }}</span>
+      </div>
+    } @empty {
+      <div class="empty">
+        <span>›_</span>
+        Nenhum log corresponde aos filtros atuais.
+      </div>
+    }
+  </div>
+</section>
+
+@if (exportOpen) {
+  <div class="export-overlay" role="presentation" (click)="exportOpen = false">
+    <section
+      class="export-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="export-title"
+      (click)="$event.stopPropagation()"
+    >
+      <header>
+        <div><strong id="export-title">Exportar diagnóstico</strong></div>
+        <button type="button" aria-label="Fechar" (click)="exportOpen = false">×</button>
+      </header>
+      <div class="export-content">
+        <p>O pacote contém versões, diagnósticos e logs já redigidos.</p>
+        <label>
+          Escopo
+          <select [value]="exportScope" (change)="exportScope = $any($event.target).value">
+            <option value="workspace">Todos os logs da workspace</option>
+            <option value="filtered">Logs filtrados atualmente</option>
+            <option value="range" [disabled]="!rangeEntries.length">Intervalo selecionado</option>
+          </select>
+        </label>
+        <label class="checkbox">
+          <input
+            type="checkbox"
+            [checked]="!includeAbsolutePaths"
+            (change)="includeAbsolutePaths = !$any($event.target).checked"
+          />
+          Remover paths absolutos
+        </label>
+        @if (exportState === 'exported') {
+          <p class="export-success">Pacote salvo em {{ exportedPath }}</p>
+        } @else if (exportState === 'error') {
+          <p class="export-error">Não foi possível gerar o pacote.</p>
+        }
+      </div>
+      <footer>
+        <button type="button" (click)="exportOpen = false">Fechar</button>
+        <button
+          class="primary"
+          type="button"
+          [disabled]="exportState === 'exporting' || (exportScope === 'range' && !rangeEntries.length)"
+          (click)="exportDiagnostics()"
+        >{{ exportState === 'exporting' ? 'Exportando…' : 'Exportar ZIP' }}</button>
+      </footer>
+    </section>
+  </div>
+}

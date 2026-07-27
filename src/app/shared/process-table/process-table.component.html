@@ -1,0 +1,254 @@
+<div class="table-shell">
+  <table>
+    <thead>
+      <tr>
+        <th>Projeto</th>
+        <th>Porta</th>
+        <th>Comando</th>
+        <th>Node</th>
+        <th>Estado</th>
+        <th>Tempo</th>
+        <th class="actions-heading">Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (project of projects; track project.id) {
+        @let process = processFor(project.id);
+        <tr
+          [class.row--warning]="project.warnings.length"
+          [attr.data-status]="process?.status ?? 'stopped'"
+        >
+          <td>
+            <div class="project">
+              <span class="project__icon" [attr.data-role]="project.role">
+                {{ project.role === 'mfe' ? 'M' : project.role === 'shell' ? 'S' : project.role === 'library' ? 'L' : 'A' }}
+              </span>
+              <div>
+                <strong>{{ project.displayName }}</strong>
+                <span>{{ roleLabel(project.role) }} · {{ project.relativePath }}</span>
+                @if (project.warnings.length) {
+                  <small [title]="project.warnings.join('\n')">
+                    <app-runner-icon name="warning" [size]="11" />
+                    {{ warningLabel(project.warnings[0]) }}
+                  </small>
+                }
+                <span
+                  class="git-context"
+                  [class.git-context--dirty]="project.git.dirty"
+                  [class.git-context--warning]="project.git.compatibleWithShell === false"
+                  [title]="gitTitle(project)"
+                >
+                  @if (!project.git.available) {
+                    Git indisponível
+                  } @else if (!project.git.repository) {
+                    Sem Git
+                  } @else {
+                    <b>{{ project.git.detached ? 'detached' : project.git.branch }}</b>
+                    @if (project.git.dirty) {
+                      <i>● {{ project.git.changedFiles }}</i>
+                    }
+                    @if (project.git.ahead) {
+                      <i>↑{{ project.git.ahead }}</i>
+                    }
+                    @if (project.git.behind) {
+                      <i>↓{{ project.git.behind }}</i>
+                    }
+                    <code>{{ project.git.commit }}</code>
+                  }
+                </span>
+              </div>
+            </div>
+          </td>
+          <td>
+            @if (project.port) {
+              <code>{{ project.port }}</code>
+            } @else {
+              <span class="muted">—</span>
+            }
+          </td>
+          <td>
+            @if (project.orphaned) {
+              <code>npm run {{ process?.script }}</code>
+            } @else {
+              <select
+                class="script-select"
+                [value]="selectedScript(project)"
+                [disabled]="isActive(process?.status)"
+                [attr.aria-label]="'Comando de ' + project.displayName"
+                (change)="setScript(project.id, $event)"
+              >
+                @for (script of project.scriptNames; track script) {
+                  <option
+                    [value]="script"
+                    [selected]="script === selectedScript(project)"
+                  >npm run {{ script }}</option>
+                }
+              </select>
+            }
+          </td>
+          <td>
+            <div class="node">
+              <strong>{{ project.node.version ? 'v' + project.node.version : 'PATH' }}</strong>
+              <span>{{ project.node.source === 'nvmrc' ? '.nvmrc' : project.node.source }}</span>
+              @if (!project.node.available) {
+                <small [title]="project.node.reason">indisponível</small>
+              }
+            </div>
+          </td>
+          <td>
+            <app-status-pill [status]="process?.status ?? 'stopped'" />
+          </td>
+          <td class="muted">{{ uptime(process) }}</td>
+          <td class="actions-cell">
+            <div class="actions">
+              @if (!isActive(process?.status)) {
+                <button
+                  class="icon-button icon-button--start"
+                  type="button"
+                  title="Iniciar"
+                  [attr.aria-label]="'Iniciar ' + project.displayName"
+                  [disabled]="busy || !project.node.available || !selectedScript(project)"
+                  (click)="start(project)"
+                ><app-runner-icon name="play" [size]="18" /></button>
+              } @else {
+                <button
+                  class="icon-button icon-button--stop"
+                  type="button"
+                  title="Parar"
+                  [attr.aria-label]="'Parar ' + project.displayName"
+                  [disabled]="busy || process?.status === 'stopping'"
+                  (click)="stop(project)"
+                ><app-runner-icon name="stop" [size]="16" /></button>
+              }
+              @if (process?.status === 'conflict') {
+                <button
+                  class="icon-button icon-button--external"
+                  type="button"
+                  [title]="'Encerrar processo externo na porta ' + project.port"
+                  [attr.aria-label]="'Encerrar processo externo na porta ' + project.port"
+                  [disabled]="busy"
+                  (click)="terminateExternal(project)"
+                ><app-runner-icon name="warning" [size]="18" /></button>
+              }
+              @if (!project.orphaned) {
+                <button
+                  class="icon-button icon-button--restart"
+                  type="button"
+                  title="Reiniciar"
+                  [attr.aria-label]="'Reiniciar ' + project.displayName"
+                  [disabled]="busy || !isActive(process?.status)"
+                  (click)="restart(project)"
+                ><app-runner-icon name="restart" [size]="18" /></button>
+              }
+              <button
+                class="icon-button icon-button--logs"
+                type="button"
+                title="Ver logs"
+                [attr.aria-label]="'Ver logs de ' + project.displayName"
+                (click)="inspectLogs.emit(project.id)"
+              ><app-runner-icon name="terminal" [size]="18" /></button>
+              @if (project.port && !project.orphaned) {
+                <button
+                  class="icon-button icon-button--open"
+                  type="button"
+                  title="Abrir endereço"
+                  [attr.aria-label]="'Abrir endereço de ' + project.displayName"
+                  (click)="openAddress.emit(project.port)"
+                ><app-runner-icon name="external" [size]="18" /></button>
+              }
+              @if (!project.orphaned && project.role === 'library' && project.library) {
+                <button
+                  class="icon-button icon-button--link"
+                  type="button"
+                  title="Vincular esta biblioteca em todos os projetos"
+                  [attr.aria-label]="'Vincular ' + project.displayName + ' em todos'"
+                  [disabled]="busy"
+                  (click)="linkLibrary.emit({ libraryId: project.library.libraryId })"
+                ><app-runner-icon name="link" [size]="18" /></button>
+              } @else if (project.libraryLinks.length) {
+                <div class="tool-menu library-menu">
+                  <button
+                    class="icon-button icon-button--link"
+                    type="button"
+                    title="Bibliotecas locais"
+                    [attr.aria-label]="'Bibliotecas de ' + project.displayName"
+                    [attr.aria-expanded]="libraryProjectId === project.id"
+                    (click)="toggleLibraries(project.id)"
+                  ><app-runner-icon name="link" [size]="18" /></button>
+                  @if (libraryProjectId === project.id) {
+                    <div class="tool-menu__panel library-menu__panel" role="menu">
+                      <strong>Bibliotecas locais</strong>
+                      @for (link of project.libraryLinks; track link.libraryId) {
+                        <div class="library-link" [attr.data-state]="link.state">
+                          <div [title]="link.message">
+                            <b>{{ link.libraryName }}</b>
+                            <small>{{ linkStateLabel(link.state) }} · {{ link.script ? 'npm run ' + link.script : 'sem script' }}</small>
+                          </div>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            [disabled]="busy || !link.script"
+                            (click)="linkOne(link.libraryId, project.id)"
+                          >Vincular</button>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+              @if (!project.orphaned) {
+              <div class="tool-menu">
+                <button
+                  class="icon-button icon-button--more"
+                  type="button"
+                  title="Ferramentas do projeto"
+                  [attr.aria-label]="'Ferramentas de ' + project.displayName"
+                  [attr.aria-expanded]="toolsProjectId === project.id"
+                  (click)="toggleTools(project.id)"
+                  (keydown.escape)="closeTools()"
+                ><app-runner-icon name="more" [size]="19" /></button>
+                @if (toolsProjectId === project.id) {
+                  <div class="tool-menu__panel" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      (click)="configureProject.emit(project.id); closeTools()"
+                    >Configurar projeto</button>
+                    <button type="button" role="menuitem" (click)="runTool('ide', project)">Abrir no IDE</button>
+                    <button type="button" role="menuitem" (click)="runTool('folder', project)">Abrir pasta</button>
+                    <button type="button" role="menuitem" (click)="runTool('terminal', project)">Abrir terminal</button>
+                    <button type="button" role="menuitem" (click)="runTool('path', project)">Copiar path</button>
+                    @if (project.port) {
+                      <button
+                        type="button"
+                        role="menuitem"
+                        (click)="copyAddress.emit(project.port); closeTools()"
+                      >Copiar endereço local</button>
+                    }
+                  </div>
+                }
+              </div>
+              }
+              @if (!project.orphaned && project.role === 'mfe') {
+                <button
+                  class="icon-button icon-button--remove"
+                  type="button"
+                  title="Remover da lista"
+                  [attr.aria-label]="'Remover ' + project.displayName + ' da lista'"
+                  [disabled]="busy"
+                  (click)="excludeProject.emit(project.id)"
+                ><app-runner-icon name="x" [size]="17" /></button>
+              }
+            </div>
+          </td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="7" class="empty-cell">
+            {{ emptyMessage }}
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="MFE Runner centraliza a descoberta, execução e diagnóstico de aplicações, projetos, bibliotecas e processos locais."
+    />
+    <meta name="theme-color" content="#080b12" />
+    <meta property="og:title" content="MFE Runner — Local Control Center" />
+    <meta
+      property="og:description"
+      content="Todas as suas aplicações locais, processos e logs em uma única interface."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://mferunner.com/" />
+    <meta property="og:image" content="https://mferunner.com/assets/mfe-runner-interface.png" />
+    <title>MFE Runner — Local Control Center</title>
+    <link rel="canonical" href="https://mferunner.com/" />
+    <link rel="icon" href="/assets/mfe-runner-logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
+
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="MFE Runner — início">
+        <img src="/assets/mfe-runner-logo.svg" alt="" width="46" height="46" />
+        <span>
+          <strong>MFE Runner</strong>
+          <small>Local Control Center</small>
+        </span>
+      </a>
+
+      <nav aria-label="Navegação principal">
+        <a href="#recursos">Recursos</a>
+        <a href="#como-funciona">Como funciona</a>
+        <a href="#downloads">Downloads</a>
+      </nav>
+
+      <div class="language-control">
+        <span class="language-control__icon" aria-hidden="true">文</span>
+        <label class="language-control__field" for="site-language">
+          <span class="language-control__label">Idioma</span>
+          <span class="language-control__select">
+            <select
+              id="site-language"
+              data-language-select
+              aria-label="Idioma"
+            >
+              <option value="pt-BR">Português (Brasil)</option>
+              <option value="es">Español</option>
+              <option value="en">English</option>
+              <option value="fr">Français</option>
+            </select>
+          </span>
+        </label>
+      </div>
+
+      <a class="button button--compact button--primary" href="#downloads">
+        Baixar agora
+        <span aria-hidden="true">↓</span>
+      </a>
+    </header>
+
+    <main id="conteudo">
+      <section class="hero">
+        <div class="hero__glow hero__glow--one" aria-hidden="true"></div>
+        <div class="hero__glow hero__glow--two" aria-hidden="true"></div>
+
+        <div class="hero__content">
+          <div class="eyebrow">
+            <span></span>
+            Feito para qualquer ambiente de desenvolvimento local
+          </div>
+          <h1>
+            Pare de gerenciar<br />
+            <span>terminais. Gerencie fluxos.</span>
+          </h1>
+          <p>
+            Aplicações monolíticas, SPAs, shells, MFEs e bibliotecas locais em
+            uma interface única. Descubra projetos, execute processos,
+            acompanhe logs e mantenha toda a workspace sob controle.
+          </p>
+          <div class="hero__actions">
+            <a class="button button--primary" href="#downloads">
+              <span class="button__platform" data-recommended-label>Baixar MFE Runner</span>
+              <span aria-hidden="true">↓</span>
+            </a>
+            <a class="button button--ghost" href="#recursos">
+              Conhecer recursos
+              <span aria-hidden="true">→</span>
+            </a>
+          </div>
+          <div class="hero__meta">
+            <span><i class="status-dot"></i> Supervisor local persistente</span>
+            <span><i>✓</i> Fontes somente leitura</span>
+            <span><i>✓</i> macOS, Windows e Linux</span>
+          </div>
+        </div>
+
+        <div class="hero__visual">
+          <div class="app-window">
+            <div class="app-window__bar">
+              <div class="traffic-lights" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </div>
+              <span>MFE Runner</span>
+              <span class="window-status"><i></i> 3 processos ativos</span>
+            </div>
+            <img
+              src="/assets/mfe-runner-interface.png"
+              alt="Interface do MFE Runner mostrando aplicações, projetos, estados e logs de uma workspace"
+              width="2000"
+              height="1179"
+            />
+          </div>
+          <div class="floating-card floating-card--process">
+            <span class="floating-card__icon floating-card__icon--green">▶</span>
+            <span><strong>Processos saudáveis</strong><small>Monitoramento em tempo real</small></span>
+          </div>
+          <div class="floating-card floating-card--logs">
+            <span class="floating-card__icon floating-card__icon--purple">›_</span>
+            <span><strong>Logs consolidados</strong><small>Filtros, busca e diagnóstico</small></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="trust-strip" aria-label="Principais capacidades">
+        <div><strong>1</strong><span>workspace<br />unificada</span></div>
+        <div><strong>∞</strong><span>projetos e<br />bibliotecas</span></div>
+        <div><strong>3</strong><span>sistemas<br />operacionais</span></div>
+        <div><strong>0</strong><span>arquivos de fonte<br />alterados</span></div>
+      </section>
+
+      <section class="section features" id="recursos">
+        <div class="section-heading">
+          <span class="eyebrow">Controle de ponta a ponta</span>
+          <h2>Tudo o que você precisa para desenvolver sem dispersão</h2>
+          <p>
+            Uma visão operacional do ambiente local, do primeiro comando ao
+            diagnóstico compartilhável.
+          </p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card feature-card--large">
+            <span class="feature-icon feature-icon--purple" aria-hidden="true">◇</span>
+            <div>
+              <span class="feature-kicker">Workspaces</span>
+              <h3>Todos os projetos da workspace juntos</h3>
+              <p>
+                Cadastre os paths uma única vez. O Runner descobre aplicações,
+                scripts, portas, Git e versões de Node sem modificar o
+                código-fonte dos projetos.
+              </p>
+            </div>
+            <div class="workspace-preview" aria-hidden="true">
+              <div><span class="project-avatar project-avatar--shell">A</span><p><strong>app-principal</strong><small>Aplicação · porta 4200</small></p><i class="pill pill--green">Saudável</i></div>
+              <div><span class="project-avatar project-avatar--library">L</span><p><strong>shared-ui</strong><small>Biblioteca · watch</small></p><i class="pill pill--blue">Executando</i></div>
+              <div><span class="project-avatar">S</span><p><strong>servico-local</strong><small>Serviço · porta 4304</small></p><i class="pill">Parado</i></div>
+            </div>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-icon feature-icon--green" aria-hidden="true">▶</span>
+            <h3>Processos sob controle</h3>
+            <p>
+              Inicie, pare e reinicie individualmente ou em lote. O supervisor
+              pode continuar leve em segundo plano mesmo com a interface fechada.
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-icon feature-icon--blue" aria-hidden="true">›_</span>
+            <h3>Logs que ajudam de verdade</h3>
+            <p>
+              Busque por texto ou regex, filtre níveis e projetos, marque linhas,
+              acompanhe erros e exporte diagnósticos sanitizados.
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-icon feature-icon--amber" aria-hidden="true">⑂</span>
+            <h3>Git somente leitura</h3>
+            <p>
+              Visualize branch, commit, alterações e divergências entre projetos
+              relacionados, sem executar fetch, checkout ou qualquer mutação.
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-icon feature-icon--purple" aria-hidden="true">⌁</span>
+            <h3>Bibliotecas locais vinculadas</h3>
+            <p>
+              Rode o watch da biblioteca e vincule-a a um ou a todos os
+              consumidores usando os scripts já declarados pelos projetos.
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-icon feature-icon--green" aria-hidden="true">↗</span>
+            <h3>Integração com seu ambiente</h3>
+            <p>
+              Abra o projeto na IDE, pasta, terminal ou navegador. Copie paths e
+              endereços sem perder o contexto da workspace.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section workflow" id="como-funciona">
+        <div class="section-heading section-heading--left">
+          <span class="eyebrow">Comece em minutos</span>
+          <h2>Do path ao ambiente rodando em três passos</h2>
+        </div>
+        <ol class="workflow__steps">
+          <li>
+            <span>01</span>
+            <div>
+              <h3>Crie uma workspace</h3>
+              <p>Informe a aplicação principal, as raízes dos projetos e bibliotecas locais.</p>
+            </div>
+          </li>
+          <li>
+            <span>02</span>
+            <div>
+              <h3>Deixe o Runner descobrir</h3>
+              <p>Scripts, Node, portas, Git e manifests aparecem automaticamente.</p>
+            </div>
+          </li>
+          <li>
+            <span>03</span>
+            <div>
+              <h3>Execute e acompanhe</h3>
+              <p>Controle os processos e concentre todos os logs em uma só tela.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section downloads" id="downloads">
+        <div class="download-shell">
+          <div class="download-intro">
+            <span class="eyebrow">Download</span>
+            <h2>Seu ambiente, detectado.</h2>
+            <p>
+              Preparamos o instalador recomendado para este dispositivo. Você
+              também pode escolher outra plataforma ou arquitetura.
+            </p>
+
+            <div class="detected-system" aria-live="polite">
+              <span class="detected-system__icon" data-detected-icon>◫</span>
+              <div>
+                <small>Sistema detectado</small>
+                <strong data-detected-system>Detectando…</strong>
+                <span data-detected-detail>Verificando a melhor versão disponível</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="recommended-download">
+            <span class="recommended-download__badge">Recomendado para você</span>
+            <img src="/assets/mfe-runner-logo.svg" alt="" width="74" height="74" />
+            <div>
+              <h3 data-recommended-title>MFE Runner</h3>
+              <p data-recommended-description>Selecionando o instalador compatível…</p>
+            </div>
+            <a class="button button--primary button--download is-disabled" data-recommended-download aria-disabled="true">
+              <span>Baixar instalador</span>
+              <small data-recommended-size></small>
+              <i aria-hidden="true">↓</i>
+            </a>
+            <span class="download-version" data-current-version>Consultando versão…</span>
+          </div>
+        </div>
+
+        <div class="all-downloads">
+          <div class="all-downloads__heading">
+            <div>
+              <h3>Todas as versões disponíveis</h3>
+              <p>Escolha manualmente o sistema operacional e a arquitetura.</p>
+            </div>
+            <label>
+              <span>Release</span>
+              <select data-release-select aria-label="Selecionar versão do MFE Runner">
+                <option>Carregando…</option>
+              </select>
+            </label>
+          </div>
+          <div class="download-grid" data-download-grid aria-live="polite">
+            <p class="download-loading">Carregando instaladores disponíveis…</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="final-cta">
+        <img src="/assets/mfe-runner-logo.svg" alt="" width="78" height="78" />
+        <span class="eyebrow">Menos terminais. Mais contexto.</span>
+        <h2>Todo o seu ambiente de desenvolvimento em um único lugar.</h2>
+        <p>Baixe o MFE Runner e simplifique o desenvolvimento local da sua equipe.</p>
+        <a class="button button--primary" href="#downloads">Escolher meu instalador <span aria-hidden="true">↓</span></a>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand brand--footer" href="/">
+        <img src="/assets/mfe-runner-logo.svg" alt="" width="38" height="38" />
+        <span><strong>MFE Runner</strong><small>Local Control Center</small></span>
+      </a>
+      <p>Ferramenta desktop para executar e supervisionar aplicações e projetos locais.</p>
+      <span data-footer-version>MFE Runner</span>
+      <a href="https://github.com/danielverissimo/mfe-runner/releases" rel="noreferrer">
+        Releases no GitHub
+      </a>
+    </footer>
+
+    <noscript>
+      <div class="noscript">
+        Ative o JavaScript para detectar seu sistema e visualizar os downloads.
+        Os instaladores também estão disponíveis em
+        <a href="https://github.com/danielverissimo/mfe-runner/releases">GitHub Releases</a>.
+      </div>
+    </noscript>
+  </body>
+</html>

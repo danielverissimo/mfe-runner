@@ -1,0 +1,96 @@
+@if (open) {
+  <div class="backdrop" (click)="dismiss.emit()" aria-hidden="true"></div>
+  <section
+    class="dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="system-info-title"
+  >
+    <header>
+      <div class="dialog__icon" aria-hidden="true">⌘</div>
+      <div>
+        <span>Ambiente local</span>
+        <h2 id="system-info-title">Informações da máquina</h2>
+        <p>{{ info.platformName }} · {{ info.operatingSystem.architecture }}</p>
+      </div>
+      <button
+        class="close-button"
+        type="button"
+        aria-label="Fechar informações da máquina"
+        (click)="dismiss.emit()"
+      >×</button>
+    </header>
+
+    <section class="info-section" aria-labelledby="operating-system-title">
+      <div class="section-heading">
+        <span aria-hidden="true">▣</span>
+        <div>
+          <h3 id="operating-system-title">Sistema operacional</h3>
+          <p>Dados fornecidos pelo sistema local.</p>
+        </div>
+      </div>
+      <dl class="facts">
+        <div><dt>Plataforma</dt><dd>{{ info.platformName }}</dd></div>
+        <div><dt>Sistema</dt><dd>{{ info.operatingSystem.type }}</dd></div>
+        <div><dt>Versão</dt><dd [title]="info.operatingSystem.version">{{ info.operatingSystem.version }}</dd></div>
+        <div><dt>Release</dt><dd>{{ info.operatingSystem.release }}</dd></div>
+        <div><dt>Arquitetura</dt><dd>{{ info.operatingSystem.architecture }}</dd></div>
+      </dl>
+    </section>
+
+    <section class="info-section" aria-labelledby="hardware-title">
+      <div class="section-heading">
+        <span aria-hidden="true">⬡</span>
+        <div>
+          <h3 id="hardware-title">Hardware</h3>
+          <p>Capacidade disponível para os processos locais.</p>
+        </div>
+      </div>
+      <dl class="facts facts--hardware">
+        <div><dt>Processador</dt><dd [title]="info.hardware.cpuModel">{{ info.hardware.cpuModel }}</dd></div>
+        <div><dt>Núcleos lógicos</dt><dd>{{ info.hardware.logicalCores }}</dd></div>
+        <div><dt>Memória total</dt><dd>{{ memoryLabel() }}</dd></div>
+      </dl>
+    </section>
+
+    <section class="info-section" aria-labelledby="runtime-title">
+      <div class="section-heading section-heading--action">
+        <span aria-hidden="true">›_</span>
+        <div>
+          <h3 id="runtime-title">Runtimes</h3>
+          <p>Versões usadas pelo Runner e disponíveis no NVM.</p>
+        </div>
+        <button
+          type="button"
+          [disabled]="nodeVersionsLoading"
+          (click)="refreshNodeVersions.emit()"
+        >{{ nodeVersionsLoading ? 'Verificando…' : 'Atualizar Node' }}</button>
+      </div>
+      <dl class="facts facts--runtime">
+        <div><dt>MFE Runner</dt><dd>v{{ info.runtime.app }}</dd></div>
+        <div><dt>Node do Runner</dt><dd>v{{ info.runtime.node }}</dd></div>
+        <div><dt>Electron</dt><dd>{{ info.runtime.electron ? 'v' + info.runtime.electron : '—' }}</dd></div>
+        <div><dt>Chromium</dt><dd>{{ info.runtime.chrome ? 'v' + info.runtime.chrome : '—' }}</dd></div>
+        <div><dt>V8</dt><dd>v{{ info.runtime.v8 }}</dd></div>
+      </dl>
+      <div class="installed-node">
+        <div>
+          <strong>Versões Node instaladas · {{ nodeManagerLabel() }}</strong>
+          <small>{{ nodeVersions.message }}</small>
+        </div>
+        <div class="version-list">
+          @for (version of nodeVersions.versions; track version) {
+            <code>v{{ version }}</code>
+          } @empty {
+            <span>Nenhuma versão gerenciada foi encontrada.</span>
+          }
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <span>Somente informações técnicas; hostname e ambiente não são expostos.</span>
+      <button type="button" (click)="dismiss.emit()">Fechar</button>
+    </footer>
+  </section>
+}

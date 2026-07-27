@@ -1,0 +1,257 @@
+.backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  background: rgb(2 4 8 / 78%);
+  backdrop-filter: blur(6px);
+}
+
+.dialog {
+  position: fixed;
+  z-index: 41;
+  top: 50%;
+  left: 50%;
+  overflow: auto;
+  width: min(700px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 23px;
+  border: 1px solid #30394a;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 95% 0, rgb(109 93 252 / 10%), transparent 34%),
+    #111720;
+  box-shadow: 0 32px 110px rgb(0 0 0 / 62%);
+  transform: translate(-50%, -50%);
+}
+
+header {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 32px;
+  align-items: start;
+  gap: 13px;
+  margin-bottom: 18px;
+}
+
+.dialog__icon,
+.section-heading > span {
+  display: grid;
+  place-items: center;
+  color: #a89eff;
+  background: rgb(109 93 252 / 11%);
+}
+
+.dialog__icon {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgb(109 93 252 / 30%);
+  border-radius: 12px;
+  font-size: 17px;
+}
+
+header > div > span {
+  color: #786af3;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+h2 {
+  margin: 4px 0;
+  font-size: 18px;
+}
+
+header p,
+.section-heading p {
+  margin: 0;
+  color: var(--runner-text-muted);
+  font-size: 10px;
+}
+
+.close-button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--runner-border-soft);
+  border-radius: 8px;
+  color: #718096;
+  background: #0c1119;
+  font-size: 17px;
+}
+
+.info-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--runner-border-soft);
+  border-radius: 11px;
+  background: #0c1119;
+}
+
+.section-heading {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+
+.section-heading--action {
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+}
+
+.section-heading > span {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  font-family: ui-monospace, monospace;
+}
+
+.section-heading h3 {
+  margin: 0 0 2px;
+  font-size: 12px;
+}
+
+.section-heading button {
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--runner-border);
+  border-radius: 7px;
+  color: #9d91ff;
+  background: #111824;
+  font-size: 9px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid var(--runner-border-soft);
+  border-radius: 9px;
+  background: var(--runner-border-soft);
+  gap: 1px;
+}
+
+.facts--hardware {
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+}
+
+.facts--runtime {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.facts div {
+  min-width: 0;
+  padding: 10px;
+  background: #090d14;
+}
+
+.facts dt {
+  color: #596579;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.facts dd {
+  overflow: hidden;
+  margin: 4px 0 0;
+  color: #cbd2df;
+  font-size: 10px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.installed-node {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.75fr) minmax(0, 1.25fr);
+  align-items: center;
+  gap: 14px;
+  padding: 10px 11px;
+  border: 1px solid var(--runner-border-soft);
+  border-radius: 9px;
+  background: #090d14;
+}
+
+.installed-node strong,
+.installed-node small {
+  display: block;
+}
+
+.installed-node strong {
+  color: #aeb8c8;
+  font-size: 10px;
+}
+
+.installed-node small {
+  margin-top: 3px;
+  color: #596579;
+  font-size: 8px;
+}
+
+.version-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.version-list code {
+  padding: 4px 6px;
+  border: 1px solid rgb(109 93 252 / 20%);
+  border-radius: 6px;
+  color: #a99fff;
+  background: rgb(109 93 252 / 7%);
+  font-size: 8px;
+}
+
+.version-list span {
+  color: #596579;
+  font-size: 9px;
+}
+
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 15px;
+}
+
+footer span {
+  color: #596579;
+  font-size: 8px;
+}
+
+footer button {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid #594bd3;
+  border-radius: 9px;
+  color: #d4d0ff;
+  background: rgb(109 93 252 / 12%);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 680px) {
+  .facts,
+  .facts--hardware,
+  .facts--runtime {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .installed-node {
+    grid-template-columns: 1fr;
+  }
+
+  .version-list {
+    justify-content: flex-start;
+  }
+}

@@ -1,0 +1,169 @@
+@if (open) {
+  <div class="backdrop" (click)="dismiss.emit()" aria-hidden="true"></div>
+  <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-dialog-title">
+    <header>
+      <div class="dialog__icon">◇</div>
+      <div>
+        <h2 id="workspace-dialog-title">
+          {{ workspace ? 'Configurar workspace' : 'Nova workspace' }}
+        </h2>
+        <p>Reúna o shell e todas as raízes de MFEs em uma única configuração.</p>
+      </div>
+    </header>
+
+    <form (ngSubmit)="submit()">
+      <label>
+        Nome
+        <input name="workspaceName" [(ngModel)]="name" maxlength="100" required placeholder="Ex.: Valloo">
+      </label>
+
+      <label>
+        Projeto shell
+        <div class="path-field">
+          <input name="shellRootPath" [(ngModel)]="shellRootPath" required placeholder="/caminho/do/shell">
+          <button type="button" (click)="browseShell.emit(shellRootPath)">Escolher…</button>
+        </div>
+      </label>
+
+      <div class="roots-heading">
+        <div>
+          <strong>Paths de MFEs</strong>
+          <small>Informe projetos exatos ou raízes contendo vários projetos.</small>
+        </div>
+        <button type="button" class="add-root" (click)="addMfePath()">＋ Adicionar path</button>
+      </div>
+      <div class="roots">
+        @for (rootPath of mfeRootPaths; track $index) {
+          <div class="path-field root-field">
+            <input
+              [name]="'mfeRootPath' + $index"
+              [ngModel]="rootPath"
+              (ngModelChange)="setMfePath($index, $event)"
+              required
+              placeholder="/caminho/dos/mfes"
+            >
+            <button
+              type="button"
+              (click)="browseMfe.emit({ index: $index, initialPath: rootPath })"
+            >Escolher…</button>
+            <button type="button" class="remove-root" title="Remover path" (click)="removeMfePath($index)">×</button>
+          </div>
+        }
+      </div>
+
+      <div class="roots-heading libraries-heading">
+        <div>
+          <strong>Bibliotecas locais</strong>
+          <small>Configure workspaces Angular de bibliotecas compartilhadas.</small>
+        </div>
+        <button type="button" class="add-root" (click)="addLibrary()">＋ Adicionar biblioteca</button>
+      </div>
+      <div class="libraries">
+        @for (library of libraries; track $index) {
+          <article class="library-card">
+            <div class="library-card__heading">
+              <div>
+                <strong>{{ library.packageName || 'Biblioteca ' + ($index + 1) }}</strong>
+                <small>{{ library.rootPath || 'Selecione o workspace da biblioteca.' }}</small>
+              </div>
+              <button
+                type="button"
+                class="remove-root"
+                title="Remover biblioteca"
+                (click)="removeLibrary($index)"
+              >×</button>
+            </div>
+            <div class="path-field">
+              <input
+                [name]="'libraryRootPath' + $index"
+                [ngModel]="library.rootPath"
+                readonly
+                required
+                placeholder="/caminho/da/biblioteca"
+              >
+              <button
+                type="button"
+                (click)="browseLibrary.emit({ index: $index, initialPath: library.rootPath })"
+              >Escolher…</button>
+            </div>
+            @if (library.rootPath) {
+              <div class="library-fields">
+                <label>
+                  Script de desenvolvimento
+                  <select
+                    [name]="'libraryDevelopmentScript' + $index"
+                    [ngModel]="library.developmentScript"
+                    (ngModelChange)="updateLibrary($index, 'developmentScript', $event)"
+                  >
+                    @for (script of library.scripts; track script) {
+                      <option [value]="script">npm run {{ script }}</option>
+                    }
+                  </select>
+                </label>
+                <label>
+                  Artefato relativo
+                  <input
+                    [name]="'libraryArtifact' + $index"
+                    [ngModel]="library.artifactRelativePath"
+                    (ngModelChange)="updateLibrary($index, 'artifactRelativePath', $event)"
+                    required
+                    placeholder="dist/minha-lib"
+                  >
+                </label>
+                <label>
+                  Script de vínculo preferido
+                  <input
+                    [name]="'libraryLinkScript' + $index"
+                    [ngModel]="library.preferredLinkScript"
+                    (ngModelChange)="updateLibrary($index, 'preferredLinkScript', $event)"
+                    required
+                    pattern="link:.+"
+                    placeholder="link:web-common"
+                  >
+                </label>
+              </div>
+            }
+          </article>
+        }
+      </div>
+
+      <div class="field-row">
+        <label>
+          Ambiente
+          <select name="environment" [(ngModel)]="environment">
+            <option value="local">Local</option>
+            <option value="des">Desenvolvimento</option>
+            <option value="hom">Homologação</option>
+            <option value="prod">Produção</option>
+          </select>
+        </label>
+        <label>
+          Política de Node
+          <select name="nodeMode" [(ngModel)]="nodeMode">
+            <option value="inherit">Herdar global</option>
+            <option value="auto">Detectar .nvmrc</option>
+            <option value="explicit">Versão específica</option>
+          </select>
+        </label>
+      </div>
+
+      @if (nodeMode === 'explicit') {
+        <app-node-version-picker
+          [catalog]="nodeVersions"
+          [loading]="nodeVersionsLoading"
+          [value]="nodeVersion"
+          label="Versão do Node da workspace"
+          (valueChange)="nodeVersion = $event"
+          (refresh)="refreshNodeVersions.emit()"
+        />
+      }
+
+      <footer>
+        <button class="button button--ghost" type="button" (click)="dismiss.emit()">Cancelar</button>
+        <button class="button button--primary" type="submit" [disabled]="!valid()">
+          {{ workspace ? 'Salvar e redescobrir' : 'Criar workspace' }}
+        </button>
+      </footer>
+    </form>
+  </section>
+}

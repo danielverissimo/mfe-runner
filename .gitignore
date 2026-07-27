@@ -1,0 +1,43 @@
+# Dependências
+/node_modules/
+
+# Builds, instaladores e relatórios gerados
+/dist/
+/release/
+/coverage/
+/.angular/
+
+# Configurações locais dos editores
+/.idea/
+/.vscode/
+*.iml
+
+# Variáveis locais, credenciais e certificados privados
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.mobileprovision
+
+# Logs e arquivos temporários
+*.log
+*.pid
+*.tmp
+*.temp
+*.swp
+*~
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Arquivos do sistema operacional
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini

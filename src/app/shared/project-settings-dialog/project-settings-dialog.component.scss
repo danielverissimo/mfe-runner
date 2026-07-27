@@ -1,0 +1,252 @@
+.backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  background: rgb(2 4 8 / 78%);
+  backdrop-filter: blur(6px);
+}
+
+.dialog {
+  position: fixed;
+  z-index: 41;
+  top: 50%;
+  left: 50%;
+  overflow: auto;
+  width: min(650px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 23px;
+  border: 1px solid #30394a;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 95% 0, rgb(109 93 252 / 9%), transparent 32%),
+    #111720;
+  box-shadow: 0 32px 110px rgb(0 0 0 / 62%);
+  transform: translate(-50%, -50%);
+}
+
+header {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 32px;
+  align-items: start;
+  gap: 13px;
+  margin-bottom: 18px;
+}
+
+.dialog__icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgb(109 93 252 / 30%);
+  border-radius: 12px;
+  color: #a89eff;
+  background: rgb(109 93 252 / 12%);
+  font-size: 17px;
+}
+
+header > div > span {
+  color: #786af3;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+h2 {
+  margin: 4px 0;
+  font-size: 18px;
+}
+
+header p,
+.form-section__heading p {
+  margin: 0;
+  color: var(--runner-text-muted);
+  font-size: 10px;
+}
+
+.close-button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--runner-border-soft);
+  border-radius: 8px;
+  color: #718096;
+  background: #0c1119;
+  font-size: 17px;
+}
+
+.project-facts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  overflow: hidden;
+  margin-bottom: 15px;
+  border: 1px solid var(--runner-border-soft);
+  border-radius: 10px;
+  background: var(--runner-border-soft);
+  gap: 1px;
+}
+
+.project-facts div {
+  padding: 10px 11px;
+  background: #0c1119;
+}
+
+.project-facts span,
+.project-facts strong {
+  display: block;
+}
+
+.project-facts span {
+  color: #596579;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.project-facts strong {
+  overflow: hidden;
+  margin-top: 4px;
+  color: #cbd2df;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+form {
+  display: grid;
+  gap: 12px;
+}
+
+.form-section {
+  display: grid;
+  gap: 13px;
+  padding: 14px;
+  border: 1px solid var(--runner-border-soft);
+  border-radius: 11px;
+  background: #0c1119;
+}
+
+.form-section__heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.form-section__heading > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 8px;
+  color: #9d91ff;
+  background: rgb(109 93 252 / 10%);
+}
+
+h3 {
+  margin: 0 0 2px;
+  font-size: 12px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: #9da8b9;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+select {
+  width: 100%;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--runner-border);
+  border-radius: 9px;
+  color: var(--runner-text);
+  background: #090d14;
+}
+
+.field-note {
+  color: #69758a;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.resolution-preview {
+  display: grid;
+  gap: 3px;
+  padding: 10px 11px;
+  border: 1px solid var(--runner-border-soft);
+  border-radius: 8px;
+  background: #090d14;
+}
+
+.resolution-preview span {
+  color: #596579;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.resolution-preview strong {
+  color: #cbd2df;
+  font-size: 11px;
+}
+
+.resolution-preview small {
+  color: #69758a;
+  font-size: 9px;
+}
+
+.read-only-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid rgb(40 211 155 / 15%);
+  border-radius: 9px;
+  color: #78998e;
+  background: rgb(40 211 155 / 4%);
+  font-size: 9px;
+}
+
+.read-only-note span {
+  color: var(--runner-success);
+}
+
+footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding-top: 4px;
+}
+
+.button {
+  height: 38px;
+  padding: 0 15px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.button--ghost {
+  border: 1px solid var(--runner-border);
+  color: #aeb8c8;
+  background: transparent;
+}
+
+.button--primary {
+  border: 1px solid #796aff;
+  color: white;
+  background: linear-gradient(135deg, #6656ef, #7c6cff);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 680px) {
+  .project-facts {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

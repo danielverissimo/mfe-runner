@@ -1,0 +1,8 @@
+{
+  "tenants": [
+    {
+      "id": "smoke",
+      "manifest": "smoke/manifest.json"
+    }
+  ]
+}

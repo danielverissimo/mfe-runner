@@ -1,0 +1,54 @@
+{
+	email danyelsanches@gmail.com
+	admin off
+	default_sni 177.73.48.206
+}
+
+mferunner.com {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	@legacyDownloads path /mfe-runner /mfe-runner/*
+	handle @legacyDownloads {
+		redir https://github.com/danielverissimo/mfe-runner/releases/latest 302
+	}
+
+	handle {
+		root * /srv/landing
+		file_server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+www.mferunner.com {
+	redir https://mferunner.com{uri} permanent
+}
+
+# Compatibilidade transitória com instalações 0.1.0 publicadas antes do domínio.
+177.73.48.206 {
+	tls {
+		issuer acme {
+			profile shortlived
+		}
+	}
+	redir https://mferunner.com{uri} permanent
+}
+
+:8080 {
+	respond /healthz "ok" 200
+}

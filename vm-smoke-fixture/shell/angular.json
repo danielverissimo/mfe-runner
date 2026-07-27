@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "projects": {
+    "mfe-runner-smoke-shell": {
+      "projectType": "application",
+      "root": "",
+      "sourceRoot": "src",
+      "architect": {
+        "serve": {
+          "options": {
+            "port": 4590
+          }
+        }
+      }
+    }
+  }
+}

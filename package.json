@@ -1,0 +1,164 @@
+{
+  "name": "mfe-runner",
+  "productName": "MFE Runner",
+  "desktopName": "mfe-runner",
+  "version": "0.1.7",
+  "private": true,
+  "description": "Desktop control center for local applications, projects, libraries, processes, and logs",
+  "homepage": "https://mferunner.com/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danielverissimo/mfe-runner.git"
+  },
+  "author": {
+    "name": "Daniel Eduardo",
+    "email": "danyelsanches@gmail.com"
+  },
+  "type": "module",
+  "main": "electron/main.mjs",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "ng": "ng",
+    "start": "npm run build && electron .",
+    "dev": "node ./scripts/dev.mjs",
+    "build": "ng build",
+    "test": "npm run test:electron && npm run test:angular",
+    "test:electron": "node --test ./electron/**/*.spec.mjs",
+    "test:angular": "ng test --watch=false --browsers=ChromeHeadless",
+    "lint": "ng lint",
+    "clean:artifacts": "node ./scripts/clean-artifacts.mjs",
+    "test:clean-artifacts": "node --test ./scripts/clean-artifacts.spec.mjs",
+    "dist:mac:arm64": "npm run clean:artifacts && npm run build && electron-builder --mac --arm64 --dir",
+    "dist:mac:x64": "npm run clean:artifacts && npm run build && electron-builder --mac --x64 --dir",
+    "dist:mac:arm64:installer": "npm run clean:artifacts && npm run build && APPLE_KEYCHAIN_PROFILE=mfe-runner-notary electron-builder --mac dmg zip --arm64 --publish never",
+    "dist:mac:x64:installer": "npm run clean:artifacts && npm run build && APPLE_KEYCHAIN_PROFILE=mfe-runner-notary electron-builder --mac dmg zip --x64 --publish never",
+    "dist:win:arm64": "npm run clean:artifacts && npm run build && electron-builder --win zip --arm64",
+    "dist:win:arm64:installer": "npm run clean:artifacts && npm run build && ELECTRON_BUILDER_7Z_FILTER=BCJ electron-builder --win nsis --arm64 --publish never",
+    "dist:win:arm64:portable": "npm run clean:artifacts && npm run build && electron-builder --win portable --arm64",
+    "dist:win:arm64:unpacked": "npm run clean:artifacts && npm run build && electron-builder --win --arm64 --dir",
+    "dist:win:ia32": "npm run clean:artifacts && npm run build && electron-builder --win zip --ia32 --publish never",
+    "dist:win:ia32:installer": "npm run clean:artifacts && npm run build && ELECTRON_BUILDER_7Z_FILTER=BCJ electron-builder --win nsis --ia32 --publish never",
+    "dist:win:ia32:unpacked": "npm run clean:artifacts && npm run build && electron-builder --win --ia32 --dir",
+    "dist:linux:arm64": "npm run clean:artifacts && npm run build && electron-builder --linux --arm64 --dir",
+    "dist:linux:arm64:installer": "npm run clean:artifacts && npm run build && electron-builder --linux deb --arm64 --publish never",
+    "dist:linux:x64": "npm run clean:artifacts && npm run build && electron-builder --linux --x64 --dir",
+    "dist:linux:x64:installer": "npm run clean:artifacts && npm run build && electron-builder --linux deb --x64 --publish never",
+    "dist:installers": "npm run clean:artifacts && npm run build && APPLE_KEYCHAIN_PROFILE=mfe-runner-notary electron-builder --mac dmg zip --arm64 --x64 --publish never && ELECTRON_BUILDER_7Z_FILTER=BCJ electron-builder --win nsis --arm64 --ia32 --publish never && electron-builder --linux deb --arm64 --x64 --publish never",
+    "deploy:server": "./docker-server/scripts/deploy-server.sh",
+    "publish:update": "./docker-server/scripts/publish-update.sh \"$npm_package_version\"",
+    "release:bump": "npm version patch --no-git-tag-version",
+    "dist:installers:publish": "npm run release:bump && npm run dist:installers && npm run publish:update"
+  },
+  "dependencies": {
+    "@angular/animations": "22.0.6",
+    "@angular/common": "22.0.6",
+    "@angular/compiler": "22.0.6",
+    "@angular/core": "22.0.6",
+    "@angular/forms": "22.0.6",
+    "@angular/platform-browser": "22.0.6",
+    "electron-updater": "6.8.9",
+    "fflate": "^0.8.3",
+    "rxjs": "7.8.2",
+    "tslib": "^2.8.1",
+    "zone.js": "0.16.2"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.0.8",
+    "@angular/cli": "^22.0.8",
+    "@angular/compiler-cli": "22.0.6",
+    "@types/jasmine": "~5.1.4",
+    "angular-eslint": "22.1.0",
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3",
+    "jasmine-core": "~5.5.0",
+    "karma": "~6.4.0",
+    "karma-chrome-launcher": "~3.2.0",
+    "karma-coverage": "~2.2.0",
+    "karma-jasmine": "~5.1.0",
+    "karma-jasmine-html-reporter": "~2.1.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.64.0"
+  },
+  "build": {
+    "appId": "br.com.valloo.mfe-runner",
+    "productName": "MFE Runner",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "electronLanguages": [
+      "en-US",
+      "pt-BR"
+    ],
+    "electronUpdaterCompatibility": ">=2.16",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "danielverissimo",
+        "repo": "mfe-runner",
+        "releaseType": "release",
+        "channel": "latest"
+      }
+    ],
+    "files": [
+      "dist/browser/**/*",
+      "electron/**/*",
+      "!electron/**/*.spec.mjs",
+      "package.json",
+      "!node_modules/**/*",
+      "node_modules/fflate/**/*",
+      "node_modules/electron-updater/**/*",
+      "node_modules/builder-util-runtime/**/*",
+      "node_modules/debug/**/*",
+      "node_modules/ms/**/*",
+      "node_modules/sax/**/*",
+      "node_modules/fs-extra/**/*",
+      "node_modules/graceful-fs/**/*",
+      "node_modules/jsonfile/**/*",
+      "node_modules/universalify/**/*",
+      "node_modules/js-yaml/**/*",
+      "node_modules/argparse/**/*",
+      "node_modules/lazy-val/**/*",
+      "node_modules/lodash.escaperegexp/**/*",
+      "node_modules/lodash.isequal/**/*",
+      "node_modules/semver/**/*",
+      "node_modules/tiny-typed-emitter/**/*"
+    ],
+    "win": {
+      "icon": "electron/assets/app-icon.ico",
+      "executableName": "MFE Runner",
+      "artifactName": "MFE-Runner-${version}-windows-${arch}.${ext}"
+    },
+    "mac": {
+      "icon": "electron/assets/app-icon.icns",
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "notarize": true,
+      "artifactName": "MFE-Runner-${version}-mac-${arch}.${ext}"
+    },
+    "linux": {
+      "icon": "electron/assets/linux-icons",
+      "executableName": "mfe-runner",
+      "category": "Development",
+      "artifactName": "MFE-Runner-${version}-linux-${arch}.${ext}",
+      "maintainer": "Daniel Eduardo <danyelsanches@gmail.com>",
+      "vendor": "Valloo",
+      "syncDesktopName": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "buildUniversalInstaller": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MFE Runner",
+      "uninstallDisplayName": "MFE Runner"
+    },
+    "dmg": {
+      "title": "MFE Runner ${version}"
+    }
+  }
+}

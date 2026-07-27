@@ -1,0 +1,165 @@
+@if (open) {
+  <div class="backdrop" (click)="dismiss.emit()" aria-hidden="true"></div>
+  <section
+    class="dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="project-settings-title"
+  >
+    <header>
+      <div class="dialog__icon">⚙</div>
+      <div>
+        <span>Configuração do projeto</span>
+        <h2 id="project-settings-title">{{ project.displayName }}</h2>
+        <p>{{ roleLabel() }} · {{ project.relativePath }}</p>
+      </div>
+      <button
+        class="close-button"
+        type="button"
+        aria-label="Fechar configurações do projeto"
+        (click)="dismiss.emit()"
+      >×</button>
+    </header>
+
+    <div class="project-facts" aria-label="Dados descobertos">
+      <div>
+        <span>Porta</span>
+        <strong>{{ project.port ?? '—' }}</strong>
+      </div>
+      <div>
+        <span>Node resolvido</span>
+        <strong>{{ project.node.version ? 'v' + project.node.version : 'PATH' }}</strong>
+      </div>
+      <div>
+        <span>Origem</span>
+        <strong>{{ project.node.source === 'nvmrc' ? '.nvmrc' : project.node.source }}</strong>
+      </div>
+      <div>
+        <span>Scripts</span>
+        <strong>{{ project.scriptNames.length }}</strong>
+      </div>
+    </div>
+
+    <form (ngSubmit)="submit()">
+      <section class="form-section">
+        <div class="form-section__heading">
+          <span>›_</span>
+          <div>
+            <h3>Execução</h3>
+            <p>Comando usado pelas ações individuais e globais.</p>
+          </div>
+        </div>
+        <label>
+          Comando padrão
+          <select
+            name="defaultScript"
+            [(ngModel)]="defaultScript"
+            [disabled]="!project.scriptNames.length"
+          >
+            @if (!project.scriptNames.length) {
+              <option value="">Nenhum comando disponível</option>
+            }
+            @for (script of project.scriptNames; track script) {
+              <option [value]="script">npm run {{ script }}</option>
+            }
+          </select>
+          <small class="field-note">
+            Na primeira descoberta, `npm run start` é priorizado quando existe.
+          </small>
+        </label>
+      </section>
+
+      @if (project.libraryLinks.length) {
+        <section class="form-section">
+          <div class="form-section__heading">
+            <span>⛓</span>
+            <div>
+              <h3>Bibliotecas locais</h3>
+              <p>Escolha o script usado para vincular cada biblioteca neste projeto.</p>
+            </div>
+          </div>
+          <div class="library-links">
+            @for (link of project.libraryLinks; track link.libraryId) {
+              <label>
+                {{ libraryName(link.libraryId) }}
+                <select
+                  [name]="'libraryLinkScript-' + link.libraryId"
+                  [ngModel]="libraryLinkScripts[link.libraryId] || ''"
+                  [disabled]="!availableLinkScripts().length"
+                  (ngModelChange)="setLibraryLinkScript(link.libraryId, $event)"
+                >
+                  @if (!availableLinkScripts().length) {
+                    <option value="">Nenhum script link:* disponível</option>
+                  }
+                  @for (script of availableLinkScripts(); track script) {
+                    <option [value]="script">npm run {{ script }}</option>
+                  }
+                </select>
+                <small class="field-note">{{ link.message }}</small>
+              </label>
+            }
+          </div>
+        </section>
+      }
+
+      <section class="form-section">
+        <div class="form-section__heading">
+          <span>⬡</span>
+          <div>
+            <h3>Runtime Node</h3>
+            <p>Projeto → workspace → configuração global.</p>
+          </div>
+        </div>
+        <label>
+          Política de Node
+          <select name="nodeMode" [(ngModel)]="nodeMode">
+            <option value="inherit">Herdar configuração da workspace</option>
+            <option value="auto">Detectar pelo .nvmrc</option>
+            <option value="explicit">Usar versão específica</option>
+          </select>
+        </label>
+
+        @if (nodeMode === 'explicit') {
+          <app-node-version-picker
+            [catalog]="nodeVersions"
+            [loading]="nodeVersionsLoading"
+            [value]="nodeVersion"
+            [label]="'Versão de Node de ' + project.displayName"
+            (valueChange)="nodeVersion = $event"
+            (refresh)="refreshNodeVersions.emit()"
+          />
+        } @else {
+          <div class="resolution-preview">
+            <span>Resolução atual</span>
+            <strong>
+              {{ project.node.version ? 'Node ' + project.node.version : 'Node disponível no PATH' }}
+            </strong>
+            <small>
+              {{ nodeMode === 'inherit'
+                ? 'A política efetiva será herdada da workspace.'
+                : 'O Runner procurará o .nvmrc mais próximo dentro da workspace.' }}
+            </small>
+          </div>
+        }
+      </section>
+
+      <div class="read-only-note">
+        <span>✓</span>
+        Estas configurações são salvas somente no MFE Runner. Nenhum arquivo do projeto será alterado.
+      </div>
+
+      <footer>
+        <button class="button button--ghost" type="button" (click)="dismiss.emit()">
+          Cancelar
+        </button>
+        <button
+          class="button button--primary"
+          type="submit"
+          [disabled]="saving || (nodeMode === 'explicit' && !nodeVersion.trim())"
+        >
+          {{ saving ? 'Salvando…' : 'Salvar configurações' }}
+        </button>
+      </footer>
+    </form>
+  </section>
+}

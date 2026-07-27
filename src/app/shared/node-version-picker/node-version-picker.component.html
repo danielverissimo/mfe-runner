@@ -1,0 +1,40 @@
+<div class="node-picker" [class.node-picker--compact]="compact">
+  <div class="node-picker__source">
+    @if (catalog.detected && catalog.versions.length) {
+      <label>
+        Instalada pelo {{ catalog.manager === 'nvm-windows' ? 'NVM for Windows' : 'NVM' }}
+        <select
+          [value]="installedValue()"
+          (change)="selectInstalled($event)"
+          [attr.aria-label]="label + ' instalada pelo NVM'"
+        >
+          <option value="">Selecionar versão…</option>
+          @for (version of catalog.versions; track version) {
+            <option [value]="version">Node {{ version }}</option>
+          }
+        </select>
+      </label>
+    } @else {
+      <span class="node-picker__status">{{ catalog.message }}</span>
+    }
+    <button
+      class="node-picker__refresh"
+      type="button"
+      [disabled]="loading"
+      (click)="refresh.emit()"
+      title="Consultar novamente as versões instaladas"
+      aria-label="Atualizar versões instaladas pelo NVM"
+    >↻</button>
+  </div>
+
+  <label>
+    {{ catalog.versions.length ? 'Ou informe manualmente' : label }}
+    <input
+      [value]="value"
+      (input)="enterManual($event)"
+      [attr.aria-label]="label + ' informada manualmente'"
+      autocomplete="off"
+      placeholder="Ex.: 24.15.0"
+    >
+  </label>
+</div>

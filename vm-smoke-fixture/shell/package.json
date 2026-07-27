@@ -1,0 +1,7 @@
+{
+  "name": "mfe-runner-smoke-shell",
+  "private": true,
+  "scripts": {
+    "start": "node server.cjs 4590 shell"
+  }
+}

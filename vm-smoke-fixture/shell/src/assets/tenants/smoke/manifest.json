@@ -1,0 +1,14 @@
+{
+  "tenantId": "smoke",
+  "name": "Smoke",
+  "microFrontends": [
+    {
+      "id": "mfe-runner-smoke-mfe",
+      "remoteName": "mfe-runner-smoke-mfe",
+      "type": "native-federation",
+      "environments": {
+        "local": "http://localhost:4591"
+      }
+    }
+  ]
+}
