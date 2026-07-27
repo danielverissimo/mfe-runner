@@ -4,7 +4,6 @@ import {
   DiagnosticExportRequest,
   DiagnosticExportResult,
   IdePreference,
-  LibraryInspection,
   LibraryLinkRequest,
   LibraryLinkResult,
   NodePolicy,
@@ -14,11 +13,14 @@ import {
   RunnerSnapshot,
   UpdateState,
   WorkspaceInput,
+  ProjectSourceInspection,
+  ProjectSourceInspectionProgress,
+  WorkspaceReview,
 } from '../models/runner.models';
 
 const EMPTY_SNAPSHOT: RunnerSnapshot = {
   config: {
-    version: 4,
+    version: 5,
     settings: {
       globalNodePolicy: { mode: 'auto' },
       stopProcessesOnExit: false,
@@ -103,12 +105,19 @@ export class RunnerApiService {
   private unsubscribeSnapshot?: () => void;
   private unsubscribeLog?: () => void;
   private unsubscribeUpdateState?: () => void;
+  private unsubscribeProjectSourceProgress?: () => void;
+  private readonly projectSourceProgressCallbacks = new Map<
+    string,
+    (progress: ProjectSourceInspectionProgress) => void
+  >();
+  private inspectionSequence = 0;
 
   async initialize(): Promise<void> {
     const api = this.getApi();
     this.unsubscribeSnapshot?.();
     this.unsubscribeLog?.();
     this.unsubscribeUpdateState?.();
+    this.unsubscribeProjectSourceProgress?.();
     this.unsubscribeSnapshot = api.onSnapshot((snapshot) =>
       this.snapshot.set(snapshot)
     );
@@ -116,6 +125,10 @@ export class RunnerApiService {
     this.unsubscribeUpdateState = api.onUpdateState((state) =>
       this.updateState.set(state)
     );
+    this.unsubscribeProjectSourceProgress =
+      api.onProjectSourceInspectionProgress((progress) =>
+        this.projectSourceProgressCallbacks.get(progress.requestId)?.(progress)
+      );
     await Promise.all([
       this.run(() => api.getSnapshot()),
       this.refreshNodeVersions(),
@@ -128,22 +141,32 @@ export class RunnerApiService {
     this.unsubscribeSnapshot?.();
     this.unsubscribeLog?.();
     this.unsubscribeUpdateState?.();
+    this.unsubscribeProjectSourceProgress?.();
+    this.projectSourceProgressCallbacks.clear();
   }
 
-  chooseShellDirectory(initialPath?: string): Promise<string | null> {
-    return this.getApi().chooseShellDirectory({ initialPath });
+  chooseProjectDirectory(initialPath?: string): Promise<string | null> {
+    return this.getApi().chooseProjectDirectory({ initialPath });
   }
 
-  chooseMfeDirectory(initialPath?: string): Promise<string | null> {
-    return this.getApi().chooseMfeDirectory({ initialPath });
+  async inspectProjectSource(
+    rootPath: string,
+    onProgress?: (progress: ProjectSourceInspectionProgress) => void,
+  ): Promise<ProjectSourceInspection> {
+    const requestId =
+      `source-${Date.now().toString(36)}-${(++this.inspectionSequence).toString(36)}`;
+    if (onProgress) {
+      this.projectSourceProgressCallbacks.set(requestId, onProgress);
+    }
+    try {
+      return await this.getApi().inspectProjectSource({ rootPath, requestId });
+    } finally {
+      this.projectSourceProgressCallbacks.delete(requestId);
+    }
   }
 
-  chooseLibraryDirectory(initialPath?: string): Promise<string | null> {
-    return this.getApi().chooseLibraryDirectory({ initialPath });
-  }
-
-  inspectLibraryDirectory(rootPath: string): Promise<LibraryInspection> {
-    return this.getApi().inspectLibraryDirectory({ rootPath });
+  reviewWorkspace(workspaceId: string): Promise<WorkspaceReview> {
+    return this.getApi().reviewWorkspace({ workspaceId });
   }
 
   addWorkspace(input: WorkspaceInput): Promise<void> {
@@ -158,10 +181,6 @@ export class RunnerApiService {
 
   removeWorkspace(workspaceId: string): Promise<void> {
     return this.run(() => this.getApi().removeWorkspace({ workspaceId }));
-  }
-
-  refreshWorkspace(workspaceId: string): Promise<void> {
-    return this.run(() => this.getApi().refreshWorkspace({ workspaceId }));
   }
 
   startWorkspace(workspaceId: string): Promise<void> {
@@ -333,6 +352,7 @@ export class RunnerApiService {
     nodePolicy: NodePolicy,
     defaultScript?: string,
     libraryLinkScripts?: Record<string, string>,
+    startupOrder?: number,
   ): Promise<void> {
     return this.run(() =>
       this.getApi().updateProject({
@@ -341,7 +361,17 @@ export class RunnerApiService {
         nodePolicy,
         defaultScript,
         libraryLinkScripts,
+        startupOrder,
       })
+    );
+  }
+
+  updateProjectOrder(
+    workspaceId: string,
+    projectIds: string[],
+  ): Promise<void> {
+    return this.run(() =>
+      this.getApi().updateProjectOrder({ workspaceId, projectIds })
     );
   }
 

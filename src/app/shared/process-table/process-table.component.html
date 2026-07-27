@@ -21,7 +21,7 @@
           <td>
             <div class="project">
               <span class="project__icon" [attr.data-role]="project.role">
-                {{ project.role === 'mfe' ? 'M' : project.role === 'shell' ? 'S' : project.role === 'library' ? 'L' : 'A' }}
+                {{ project.role === 'mfe' ? 'M' : project.role === 'shell' ? 'H' : project.role === 'library' ? 'L' : 'P' }}
               </span>
               <div>
                 <strong>{{ project.displayName }}</strong>
@@ -214,6 +214,20 @@
                       role="menuitem"
                       (click)="configureProject.emit(project.id); closeTools()"
                     >Configurar projeto</button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      title="Mover projeto para cima"
+                      [disabled]="!canMove(project, 'up')"
+                      (click)="move(project.id, 'up')"
+                    >Mover para cima</button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      title="Mover projeto para baixo"
+                      [disabled]="!canMove(project, 'down')"
+                      (click)="move(project.id, 'down')"
+                    >Mover para baixo</button>
                     <button type="button" role="menuitem" (click)="runTool('ide', project)">Abrir no IDE</button>
                     <button type="button" role="menuitem" (click)="runTool('folder', project)">Abrir pasta</button>
                     <button type="button" role="menuitem" (click)="runTool('terminal', project)">Abrir terminal</button>
@@ -229,7 +243,7 @@
                 }
               </div>
               }
-              @if (!project.orphaned && project.role === 'mfe') {
+              @if (!project.orphaned) {
                 <button
                   class="icon-button icon-button--remove"
                   type="button"

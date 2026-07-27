@@ -34,12 +34,18 @@ async function angularProject(projectPath, {
     );
   }
   if (shell) {
+    await writeFile(
+      path.join(projectPath, 'federation.config.mjs'),
+      `export default { name: '${name}', remotes: {} };`,
+    );
     await mkdir(path.join(projectPath, 'src', 'assets', 'tenants', 'demo'), {
       recursive: true,
     });
     await writeFile(
       path.join(projectPath, 'src', 'assets', 'tenants', 'registry.json'),
-      '{}',
+      JSON.stringify({
+        tenants: [{ manifestPath: 'demo/manifest.json' }],
+      }),
     );
     await writeFile(
       path.join(projectPath, 'src', 'assets', 'tenants', 'demo', 'manifest.json'),
@@ -114,18 +120,23 @@ test('discovers exact shell and multiple MFE roots with stable IDs and dedupe', 
   const catalog = await discoverWorkspace({
     id: 'workspace',
     name: 'Workspace',
-    shellRootPath: shellPath,
-    mfeRoots: [
-      { id: 'root-a', rootPath: rootA },
-      { id: 'root-b', rootPath: rootB },
+    projectSources: [
+      {
+        id: 'host-source',
+        rootPath: shellPath,
+        rootProjectId: 'shell',
+        projects: [{ relativePath: '.', kind: 'project', kindSource: 'detected' }],
+      },
+      { id: 'root-a', rootPath: rootA, rootProjectId: 'root-a', projects: [] },
+      { id: 'root-b', rootPath: rootB, rootProjectId: 'root-b', projects: [] },
     ],
     environment: 'local',
     nodePolicy: { mode: 'auto' },
     projectOverrides: {},
     excludedProjectIds: [],
   }, { mode: 'auto' });
-  assert.equal(catalog.projects[0].id, 'shell');
-  assert.equal(catalog.projects[0].role, 'shell');
+  assert.equal(catalog.projects.at(-1).id, 'shell');
+  assert.equal(catalog.projects.at(-1).role, 'shell');
   assert.equal(catalog.projects.filter((project) => project.role === 'mfe').length, 2);
   assert.equal(catalog.projects.some((project) => project.id === 'root-a/example'), true);
   assert.equal(new Set(catalog.projects.map((project) => project.absolutePath)).size, 3);
@@ -147,7 +158,41 @@ test('uses configured override, otherwise prioritizes the start script', () => {
   );
 });
 
-test('keeps excluded MFEs out while always retaining the shell', async () => {
+test('applies a persisted visual order without changing startup priorities', async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-order-'));
+  const root = path.join(base, 'projects');
+  await angularProject(path.join(root, 'first'), { name: 'first' });
+  await angularProject(path.join(root, 'second'), { name: 'second' });
+  const catalog = await discoverWorkspace({
+    id: 'workspace',
+    name: 'Workspace',
+    projectSources: [{
+      id: 'root',
+      rootPath: root,
+      rootProjectId: 'root',
+      projects: [],
+    }],
+    environment: 'local',
+    nodePolicy: { mode: 'inherit' },
+    projectOverrides: {
+      'root/first': { startupOrder: 100 },
+      'root/second': { startupOrder: 900 },
+    },
+    projectOrder: ['root/second', 'root/first'],
+    excludedProjectIds: [],
+  }, { mode: 'auto' });
+
+  assert.deepEqual(
+    catalog.projects.map((project) => project.id),
+    ['root/second', 'root/first'],
+  );
+  assert.deepEqual(
+    catalog.projects.map((project) => project.startupOrder),
+    [900, 100],
+  );
+});
+
+test('keeps excluded projects out of the generic catalog', async () => {
   const base = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-excluded-'));
   const shellPath = path.join(base, 'shell');
   const root = path.join(base, 'mfes');
@@ -159,8 +204,15 @@ test('keeps excluded MFEs out while always retaining the shell', async () => {
   const catalog = await discoverWorkspace({
     id: 'workspace',
     name: 'Workspace',
-    shellRootPath: shellPath,
-    mfeRoots: [{ id: 'root', rootPath: root }],
+    projectSources: [
+      {
+        id: 'host-source',
+        rootPath: shellPath,
+        rootProjectId: 'shell',
+        projects: [{ relativePath: '.', kind: 'project', kindSource: 'detected' }],
+      },
+      { id: 'root', rootPath: root, rootProjectId: 'root', projects: [] },
+    ],
     environment: 'local',
     nodePolicy: { mode: 'inherit' },
     projectOverrides: {},
@@ -169,7 +221,7 @@ test('keeps excluded MFEs out while always retaining the shell', async () => {
   assert.deepEqual(catalog.projects.map((project) => project.id), ['shell']);
 });
 
-test('discovers configured libraries after the shell with stable IDs and link status', async () => {
+test('discovers linked libraries first with stable IDs and consumer link status', async () => {
   const base = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-libraries-'));
   const shellPath = path.join(base, 'shell');
   const libraryPath = path.join(base, 'web-common');
@@ -195,14 +247,32 @@ test('discovers configured libraries after the shell with stable IDs and link st
   const catalog = await discoverWorkspace({
     id: 'workspace',
     name: 'Workspace',
-    shellRootPath: shellPath,
-    mfeRoots: [{ id: 'root', rootPath: root }],
-    libraries: [{
+    projectSources: [{
+      id: 'host-source',
+      rootPath: shellPath,
+      rootProjectId: 'shell',
+      projects: [{ relativePath: '.', kind: 'project', kindSource: 'detected' }],
+    }, {
+      id: 'root',
+      rootPath: root,
+      rootProjectId: 'root',
+      projects: [],
+    }, {
       id: 'web-common',
       rootPath: libraryPath,
-      developmentScript: 'watch',
-      artifactRelativePath: 'dist/web-common-lib',
-      preferredLinkScript: 'link:web-common',
+      rootProjectId: 'library:web-common',
+      projects: [{
+        relativePath: '.',
+        kind: 'library',
+        kindSource: 'user',
+        localLibraryLink: {
+          enabled: true,
+          packageName: '',
+          developmentScript: 'watch',
+          artifactRelativePath: 'dist/web-common-lib',
+          preferredLinkScript: 'link:web-common',
+        },
+      }],
     }],
     environment: 'local',
     nodePolicy: { mode: 'inherit' },
@@ -212,10 +282,10 @@ test('discovers configured libraries after the shell with stable IDs and link st
 
   assert.deepEqual(
     catalog.projects.map((project) => project.id),
-    ['shell', 'library:web-common', 'root/consumer'],
+    ['library:web-common', 'root/consumer', 'shell'],
   );
-  assert.equal(catalog.projects[1].role, 'library');
-  assert.equal(catalog.projects[1].defaultScript, 'watch');
-  assert.equal(catalog.projects[2].libraryLinks[0].script, 'link:web-common');
-  assert.equal(catalog.projects[2].libraryLinks[0].state, 'not-linked');
+  assert.equal(catalog.projects[0].role, 'library');
+  assert.equal(catalog.projects[0].defaultScript, 'watch');
+  assert.equal(catalog.projects[1].libraryLinks[0].script, 'link:web-common');
+  assert.equal(catalog.projects[1].libraryLinks[0].state, 'not-linked');
 });

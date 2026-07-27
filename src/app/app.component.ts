@@ -50,6 +50,11 @@ interface ProjectDialogContext {
   project: DiscoveredProject;
 }
 
+interface WorkspaceRemovalContext {
+  id: string;
+  name: string;
+}
+
 type ProjectVisibility = 'all' | 'running';
 
 const ACTIVE_PROCESS_STATUSES = new Set<ProcessStatus>([
@@ -106,6 +111,8 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly selectedLogWorkspaceId = signal<string | undefined>(undefined);
   readonly workspaceDialogOpen = signal(false);
   readonly workspaceDialogTarget = signal<WorkspaceConfig | null>(null);
+  readonly workspaceDialogReviewMode = signal(false);
+  readonly workspaceRemoval = signal<WorkspaceRemovalContext | null>(null);
   readonly projectDialogContext = signal<ProjectDialogContext | null>(null);
   readonly systemInfoDialogOpen = signal(false);
   readonly projectVisibility = signal<ProjectVisibility>('all');
@@ -188,7 +195,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     return this.projectVisibility() === 'running'
       ? 'Nenhum projeto está em execução.'
-      : 'Nenhum projeto Angular executável foi descoberto nestes paths.';
+      : 'Nenhum projeto executável foi descoberto nestes paths.';
   });
 
   readonly workspaceMetrics = computed(() => {
@@ -321,45 +328,77 @@ export class AppComponent implements OnInit, OnDestroy {
     this.i18n.setLanguage(language);
   }
 
-  openWorkspaceDialog(workspace: WorkspaceConfig | null = null): void {
+  async openWorkspaceDialog(workspace: WorkspaceConfig | null = null): Promise<void> {
     this.workspaceDialogTarget.set(workspace);
+    this.workspaceDialogReviewMode.set(false);
     this.workspaceDialogOpen.set(true);
+    await Promise.resolve();
+    if (workspace) {
+      for (let index = 0; index < workspace.projectSources.length; index += 1) {
+        const source = workspace.projectSources[index];
+        this.workspaceDialog?.startInspection(index);
+        try {
+          const inspection = await this.runner.inspectProjectSource(
+            source.rootPath,
+            (progress) =>
+              this.workspaceDialog?.setInspectionProgress(index, progress),
+          );
+          this.workspaceDialog?.setInspection(index, inspection);
+        } catch (error) {
+          this.workspaceDialog?.setInspectionError(
+            index,
+            error instanceof Error ? error.message : 'Falha na análise do path.',
+          );
+        }
+      }
+    }
   }
 
   closeWorkspaceDialog(): void {
     this.workspaceDialogOpen.set(false);
     this.workspaceDialogTarget.set(null);
+    this.workspaceDialogReviewMode.set(false);
   }
 
-  async browseShell(initialPath: string): Promise<void> {
-    const path = await this.runner.chooseShellDirectory(initialPath);
-    if (path) this.workspaceDialog?.setShellPath(path);
-  }
-
-  async browseMfe(
-    request: { index: number; initialPath: string },
-  ): Promise<void> {
-    const path = await this.runner.chooseMfeDirectory(request.initialPath);
-    if (path) this.workspaceDialog?.setMfePath(request.index, path);
-  }
-
-  async browseLibrary(
-    request: { index: number; initialPath: string },
-  ): Promise<void> {
-    const selectedPath = await this.runner.chooseLibraryDirectory(
-      request.initialPath,
-    );
+  async addProjectPath(): Promise<void> {
+    const selectedPath = await this.runner.chooseProjectDirectory();
     if (!selectedPath) return;
+    const index = this.workspaceDialog?.beginInspection(selectedPath);
+    if (index === undefined) return;
     try {
-      const inspection = await this.runner.inspectLibraryDirectory(
+      const inspection = await this.runner.inspectProjectSource(
         selectedPath,
+        (progress) =>
+          this.workspaceDialog?.setInspectionProgress(index, progress),
       );
-      this.workspaceDialog?.setLibraryInspection(request.index, inspection);
+      this.workspaceDialog?.setInspection(index, inspection);
     } catch (error) {
-      window.alert(
-        error instanceof Error
-          ? error.message
-          : 'Não foi possível analisar a biblioteca.',
+      this.workspaceDialog?.setInspectionError(
+        index,
+        error instanceof Error ? error.message : 'Não foi possível analisar o path.',
+      );
+    }
+  }
+
+  async reviewWorkspace(catalog: WorkspaceCatalog): Promise<void> {
+    this.workspaceDialogTarget.set(catalog.workspace);
+    this.workspaceDialogReviewMode.set(true);
+    this.workspaceDialogOpen.set(true);
+    await Promise.resolve();
+    try {
+      const review = await this.runner.reviewWorkspace(catalog.workspace.id);
+      review.sources.forEach((source, index) =>
+        this.workspaceDialog?.setInspection(index, source)
+      );
+      this.workspaceDialog?.setMissingProjects(review.missingProjects);
+    } catch (error) {
+      catalog.workspace.projectSources.forEach((_, index) =>
+        this.workspaceDialog?.setInspectionError(
+          index,
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível revisar a workspace.',
+        )
       );
     }
   }
@@ -374,7 +413,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.runner.error()) {
       this.closeWorkspaceDialog();
       const created = this.runner.workspaces().find(
-        (catalog) => catalog.workspace.shellRootPath === input.shellRootPath,
+        (catalog) => catalog.workspace.name === input.name,
       );
       if (created) this.selectedWorkspaceId.set(created.workspace.id);
       this.section.set('projects');
@@ -387,12 +426,24 @@ export class AppComponent implements OnInit, OnDestroy {
       'Os processos serão parados. Nenhum arquivo será apagado.',
     );
     if (!confirmed) return;
-    await this.runner.removeWorkspace(catalog.workspace.id);
+    this.workspaceRemoval.set({
+      id: catalog.workspace.id,
+      name: catalog.workspace.name,
+    });
+    try {
+      await this.runner.removeWorkspace(catalog.workspace.id);
+    } finally {
+      this.workspaceRemoval.set(null);
+    }
   }
 
   openProjects(catalog: WorkspaceCatalog): void {
     this.selectedWorkspaceId.set(catalog.workspace.id);
     this.section.set('projects');
+  }
+
+  hasLinkLibraries(catalog: WorkspaceCatalog): boolean {
+    return catalog.projects.some((project) => !!project.library);
   }
 
   async updateEnvironment(
@@ -412,15 +463,37 @@ export class AppComponent implements OnInit, OnDestroy {
     projectId: string,
   ): Promise<void> {
     const project = catalog.projects.find((item) => item.id === projectId);
-    if (!project || project.role !== 'mfe') return;
+    if (!project) return;
+    const itemType = project.kind === 'library' ? 'biblioteca' : 'projeto';
     const confirmed = window.confirm(
-      `Ocultar "${project.displayName}" do MFE Runner?\n\n` +
+      `Remover ${itemType} "${project.displayName}" da workspace?\n\n` +
       'O processo será parado e nenhum arquivo será apagado. ' +
-      'O projeto poderá ser adicionado novamente ao redescobrir a workspace.',
+      'O item poderá ser adicionado novamente ao redescobrir a workspace.',
     );
     if (confirmed) {
       await this.runner.excludeProject(catalog.workspace.id, project.id);
     }
+  }
+
+  async moveProject(
+    catalog: WorkspaceCatalog,
+    projectId: string,
+    direction: 'up' | 'down',
+  ): Promise<void> {
+    if (
+      this.projectVisibility() !== 'all' ||
+      normalizeProjectSearch(this.projectNameFilter())
+    ) return;
+    const projects = catalog.projects.filter((project) => !project.orphaned);
+    const index = projects.findIndex((project) => project.id === projectId);
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (index < 0 || targetIndex < 0 || targetIndex >= projects.length) return;
+    const projectIds = projects.map((project) => project.id);
+    [projectIds[index], projectIds[targetIndex]] = [
+      projectIds[targetIndex],
+      projectIds[index],
+    ];
+    await this.runner.updateProjectOrder(catalog.workspace.id, projectIds);
   }
 
   openProjectSettings(projectId: string): void {
@@ -442,6 +515,7 @@ export class AppComponent implements OnInit, OnDestroy {
       change.nodePolicy,
       change.defaultScript,
       change.libraryLinkScripts,
+      change.startupOrder,
     );
     if (!this.runner.error()) this.closeProjectSettings();
   }
@@ -638,13 +712,10 @@ export class AppComponent implements OnInit, OnDestroy {
   ): WorkspaceInput {
     return {
       name: workspace.name,
-      shellRootPath: workspace.shellRootPath,
-      mfeRootPaths: workspace.mfeRoots.map((root) => root.rootPath),
-      libraries: workspace.libraries.map((library) => ({
-        rootPath: library.rootPath,
-        developmentScript: library.developmentScript,
-        artifactRelativePath: library.artifactRelativePath,
-        preferredLinkScript: library.preferredLinkScript,
+      projectSources: workspace.projectSources.map((source) => ({
+        id: source.id,
+        rootPath: source.rootPath,
+        projects: source.projects,
       })),
       environment: workspace.environment,
       nodePolicy: workspace.nodePolicy,

@@ -10,8 +10,12 @@ const workspace = {
   id: 'workspace-1',
   name: 'Workspace',
   environment: 'local',
-  shellRootPath: '/Users/developer/work/shell',
-  mfeRoots: [{ id: 'root', rootPath: '/Users/developer/work/mfes' }],
+  projectSources: [{
+    id: 'root',
+    rootPath: '/Users/developer/work/mfes',
+    rootProjectId: 'root',
+    projects: [],
+  }],
 };
 const project = {
   id: 'root/project',

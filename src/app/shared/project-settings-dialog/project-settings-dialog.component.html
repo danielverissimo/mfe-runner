@@ -67,6 +67,20 @@
             Na primeira descoberta, `npm run start` é priorizado quando existe.
           </small>
         </label>
+        <label>
+          Ordem de inicialização
+          <input
+            name="startupOrder"
+            type="number"
+            min="0"
+            max="999"
+            step="1"
+            [(ngModel)]="startupOrder"
+          >
+          <small class="field-note">
+            Valores menores iniciam primeiro. A parada usa a ordem inversa.
+          </small>
+        </label>
       </section>
 
       @if (project.libraryLinks.length) {

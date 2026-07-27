@@ -3,14 +3,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 const channels = Object.freeze({
   getSnapshot: 'runner:get-snapshot',
   listNodeVersions: 'runner:list-node-versions',
-  chooseShellDirectory: 'runner:choose-shell-directory',
-  chooseMfeDirectory: 'runner:choose-mfe-directory',
-  chooseLibraryDirectory: 'runner:choose-library-directory',
-  inspectLibraryDirectory: 'runner:inspect-library-directory',
+  chooseProjectDirectory: 'runner:choose-project-directory',
+  inspectProjectSource: 'runner:inspect-project-source',
+  projectSourceInspectionProgress: 'runner:project-source-inspection-progress',
+  reviewWorkspace: 'runner:review-workspace',
   addWorkspace: 'runner:add-workspace',
   updateWorkspace: 'runner:update-workspace',
   removeWorkspace: 'runner:remove-workspace',
-  refreshWorkspace: 'runner:refresh-workspace',
   startWorkspace: 'runner:start-workspace',
   stopWorkspace: 'runner:stop-workspace',
   restartWorkspace: 'runner:restart-workspace',
@@ -26,6 +25,7 @@ const channels = Object.freeze({
   exportDiagnostics: 'runner:export-diagnostics',
   updateSettings: 'runner:update-settings',
   updateProject: 'runner:update-project',
+  updateProjectOrder: 'runner:update-project-order',
   excludeProject: 'runner:exclude-project',
   startProject: 'runner:start-project',
   stopProject: 'runner:stop-project',
@@ -53,21 +53,17 @@ function subscribe(channel, callback) {
 contextBridge.exposeInMainWorld('runnerApi', Object.freeze({
   getSnapshot: () => ipcRenderer.invoke(channels.getSnapshot),
   listNodeVersions: () => ipcRenderer.invoke(channels.listNodeVersions),
-  chooseShellDirectory: (input) =>
-    ipcRenderer.invoke(channels.chooseShellDirectory, input),
-  chooseMfeDirectory: (input) =>
-    ipcRenderer.invoke(channels.chooseMfeDirectory, input),
-  chooseLibraryDirectory: (input) =>
-    ipcRenderer.invoke(channels.chooseLibraryDirectory, input),
-  inspectLibraryDirectory: (input) =>
-    ipcRenderer.invoke(channels.inspectLibraryDirectory, input),
+  chooseProjectDirectory: (input) =>
+    ipcRenderer.invoke(channels.chooseProjectDirectory, input),
+  inspectProjectSource: (input) =>
+    ipcRenderer.invoke(channels.inspectProjectSource, input),
+  reviewWorkspace: (input) =>
+    ipcRenderer.invoke(channels.reviewWorkspace, input),
   addWorkspace: (input) => ipcRenderer.invoke(channels.addWorkspace, input),
   updateWorkspace: (input) =>
     ipcRenderer.invoke(channels.updateWorkspace, input),
   removeWorkspace: (input) =>
     ipcRenderer.invoke(channels.removeWorkspace, input),
-  refreshWorkspace: (input) =>
-    ipcRenderer.invoke(channels.refreshWorkspace, input),
   startWorkspace: (input) =>
     ipcRenderer.invoke(channels.startWorkspace, input),
   stopWorkspace: (input) =>
@@ -96,6 +92,8 @@ contextBridge.exposeInMainWorld('runnerApi', Object.freeze({
     ipcRenderer.invoke(channels.updateSettings, input),
   updateProject: (input) =>
     ipcRenderer.invoke(channels.updateProject, input),
+  updateProjectOrder: (input) =>
+    ipcRenderer.invoke(channels.updateProjectOrder, input),
   excludeProject: (input) =>
     ipcRenderer.invoke(channels.excludeProject, input),
   startProject: (input) =>
@@ -113,6 +111,8 @@ contextBridge.exposeInMainWorld('runnerApi', Object.freeze({
   installUpdate: () => ipcRenderer.invoke(channels.installUpdate),
   onSnapshot: (callback) => subscribe(channels.snapshotChanged, callback),
   onLog: (callback) => subscribe(channels.logReceived, callback),
+  onProjectSourceInspectionProgress: (callback) =>
+    subscribe(channels.projectSourceInspectionProgress, callback),
   onUpdateState: (callback) =>
     subscribe(channels.updateStateChanged, callback),
 }));

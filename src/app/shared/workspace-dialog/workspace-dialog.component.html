@@ -5,127 +5,206 @@
       <div class="dialog__icon">◇</div>
       <div>
         <h2 id="workspace-dialog-title">
-          {{ workspace ? 'Configurar workspace' : 'Nova workspace' }}
+          {{ !workspace ? 'Nova workspace' : reviewMode ? 'Revisar redescoberta' : 'Configurar workspace' }}
         </h2>
-        <p>Reúna o shell e todas as raízes de MFEs em uma única configuração.</p>
+        <p>Adicione projetos, raízes com vários projetos ou monorepos.</p>
       </div>
     </header>
 
     <form (ngSubmit)="submit()">
       <label>
         Nome
-        <input name="workspaceName" [(ngModel)]="name" maxlength="100" required placeholder="Ex.: Valloo">
-      </label>
-
-      <label>
-        Projeto shell
-        <div class="path-field">
-          <input name="shellRootPath" [(ngModel)]="shellRootPath" required placeholder="/caminho/do/shell">
-          <button type="button" (click)="browseShell.emit(shellRootPath)">Escolher…</button>
-        </div>
+        <input name="workspaceName" [(ngModel)]="name" maxlength="100" required placeholder="Ex.: Meu ambiente local">
       </label>
 
       <div class="roots-heading">
         <div>
-          <strong>Paths de MFEs</strong>
-          <small>Informe projetos exatos ou raízes contendo vários projetos.</small>
+          <strong>Projetos e raízes</strong>
+          <small>O Runner analisa cada path e você confirma a classificação.</small>
         </div>
-        <button type="button" class="add-root" (click)="addMfePath()">＋ Adicionar path</button>
-      </div>
-      <div class="roots">
-        @for (rootPath of mfeRootPaths; track $index) {
-          <div class="path-field root-field">
-            <input
-              [name]="'mfeRootPath' + $index"
-              [ngModel]="rootPath"
-              (ngModelChange)="setMfePath($index, $event)"
-              required
-              placeholder="/caminho/dos/mfes"
-            >
-            <button
-              type="button"
-              (click)="browseMfe.emit({ index: $index, initialPath: rootPath })"
-            >Escolher…</button>
-            <button type="button" class="remove-root" title="Remover path" (click)="removeMfePath($index)">×</button>
-          </div>
-        }
+        <button type="button" class="add-root" (click)="addPath.emit()">＋ Adicionar path</button>
       </div>
 
-      <div class="roots-heading libraries-heading">
-        <div>
-          <strong>Bibliotecas locais</strong>
-          <small>Configure workspaces Angular de bibliotecas compartilhadas.</small>
-        </div>
-        <button type="button" class="add-root" (click)="addLibrary()">＋ Adicionar biblioteca</button>
-      </div>
-      <div class="libraries">
-        @for (library of libraries; track $index) {
-          <article class="library-card">
-            <div class="library-card__heading">
+      <div class="sources">
+        @for (source of sources; track source.rootPath; let sourceIndex = $index) {
+          <article class="source-card">
+            <div class="source-card__heading">
               <div>
-                <strong>{{ library.packageName || 'Biblioteca ' + ($index + 1) }}</strong>
-                <small>{{ library.rootPath || 'Selecione o workspace da biblioteca.' }}</small>
+                <strong>
+                  {{ source.loading
+                    ? 'Analisando path'
+                    : source.sourceType === 'project'
+                      ? 'Projeto'
+                      : source.sourceType === 'root'
+                        ? 'Raiz'
+                        : 'Monorepo' }}
+                </strong>
+                <small>{{ source.rootPath }}</small>
               </div>
               <button
                 type="button"
                 class="remove-root"
-                title="Remover biblioteca"
-                (click)="removeLibrary($index)"
+                title="Remover path"
+                [disabled]="source.loading"
+                (click)="removeSource(sourceIndex)"
               >×</button>
             </div>
-            <div class="path-field">
-              <input
-                [name]="'libraryRootPath' + $index"
-                [ngModel]="library.rootPath"
-                readonly
-                required
-                placeholder="/caminho/da/biblioteca"
+            @if (source.loading) {
+              <section
+                class="inspection-progress"
+                role="status"
+                aria-live="polite"
+                [attr.aria-label]="'Analisando ' + source.rootPath"
               >
-              <button
-                type="button"
-                (click)="browseLibrary.emit({ index: $index, initialPath: library.rootPath })"
-              >Escolher…</button>
-            </div>
-            @if (library.rootPath) {
-              <div class="library-fields">
-                <label>
-                  Script de desenvolvimento
-                  <select
-                    [name]="'libraryDevelopmentScript' + $index"
-                    [ngModel]="library.developmentScript"
-                    (ngModelChange)="updateLibrary($index, 'developmentScript', $event)"
-                  >
-                    @for (script of library.scripts; track script) {
-                      <option [value]="script">npm run {{ script }}</option>
+                <div class="inspection-progress__header">
+                  <span class="inspection-spinner" aria-hidden="true"></span>
+                  <div>
+                    <strong>
+                      {{ source.progress?.phase === 'analyzing'
+                        ? 'Identificando e classificando projetos'
+                        : source.progress?.phase === 'complete'
+                          ? 'Análise concluída'
+                          : 'Procurando projetos no path' }}
+                    </strong>
+                    <small>
+                      {{ source.progress?.phase === 'preparing'
+                        ? 'Preparando a leitura do diretório…'
+                        : source.progress?.currentPath === '.'
+                          ? 'Analisando a raiz selecionada'
+                          : source.progress?.currentPath }}
+                    </small>
+                  </div>
+                  <strong class="inspection-progress__percent">
+                    {{ source.progress?.percent ?? 0 }}%
+                  </strong>
+                </div>
+                <div
+                  class="inspection-progress__track"
+                  role="progressbar"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  [attr.aria-valuenow]="source.progress?.percent ?? 0"
+                >
+                  <span [style.width.%]="source.progress?.percent ?? 0"></span>
+                </div>
+                <div class="inspection-progress__stats">
+                  <span>
+                    <strong>{{ source.progress?.directoriesScanned ?? 0 }}</strong>
+                    diretório(s) analisado(s)
+                  </span>
+                  <span>
+                    <strong>{{ source.progress?.projectsFound ?? 0 }}</strong>
+                    projeto(s) encontrado(s)
+                  </span>
+                  @if (source.progress?.totalProjects) {
+                    <span>
+                      <strong>
+                        {{ source.progress.processedProjects ?? 0 }}/{{ source.progress.totalProjects }}
+                      </strong>
+                      projeto(s) identificado(s)
+                    </span>
+                  }
+                </div>
+              </section>
+            } @else if (source.error) {
+              <p class="inspection-state inspection-state--error">{{ source.error }}</p>
+            } @else {
+              @for (warning of source.warnings; track warning) {
+                <p class="inspection-warning">{{ warning }}</p>
+              }
+              <div class="candidates">
+                @for (project of source.projects; track project.relativePath; let projectIndex = $index) {
+                  <section class="candidate">
+                    <div class="candidate__identity">
+                      <strong>{{ project.name }}</strong>
+                      <small>{{ project.relativePath }} · {{ project.technology }}</small>
+                      <div class="badges">
+                        @if (reviewMode) {
+                          <span [class.badge--new]="project.status === 'new'">
+                            {{ project.status === 'new' ? 'Novo projeto' : 'Projeto existente' }}
+                          </span>
+                        }
+                        @for (capability of project.capabilities; track capability) {
+                          <span>{{ capability === 'host' ? 'Host' : capability === 'mfe' ? 'MFE' : 'Angular' }}</span>
+                        }
+                        <span>{{ project.kindSource === 'user' ? 'Definido pelo usuário' : 'Detectado' }}</span>
+                      </div>
+                      @if (project.evidence.length) {
+                        <small>Evidências: {{ project.evidence.join(' · ') }}</small>
+                      }
+                    </div>
+                    <label>
+                      Tipo
+                      <select
+                        [name]="'kind-' + sourceIndex + '-' + projectIndex"
+                        [ngModel]="project.kind"
+                        (ngModelChange)="setKind(sourceIndex, projectIndex, $event)"
+                      >
+                        <option value="" disabled>Escolha…</option>
+                        <option value="project">Projeto</option>
+                        <option value="library">Biblioteca</option>
+                      </select>
+                    </label>
+                    @if (project.kind === 'library') {
+                      <label class="link-toggle">
+                        <input
+                          type="checkbox"
+                          [name]="'link-' + sourceIndex + '-' + projectIndex"
+                          [ngModel]="project.linkEnabled"
+                          (ngModelChange)="setLinkEnabled(sourceIndex, projectIndex, $event)"
+                        >
+                        Permitir vínculo local
+                      </label>
+                      @if (project.linkEnabled && project.localLink) {
+                        <div class="library-fields">
+                          <label>
+                            Pacote
+                            <input [name]="'package-' + sourceIndex + '-' + projectIndex" [(ngModel)]="project.localLink.packageName">
+                          </label>
+                          <label>
+                            Script de desenvolvimento
+                            <select [name]="'dev-' + sourceIndex + '-' + projectIndex" [(ngModel)]="project.localLink.developmentScript">
+                              @for (script of project.scripts; track script) {
+                                <option [value]="script">npm run {{ script }}</option>
+                              }
+                            </select>
+                          </label>
+                          <label>
+                            Artefato relativo
+                            <input [name]="'artifact-' + sourceIndex + '-' + projectIndex" [(ngModel)]="project.localLink.artifactRelativePath">
+                          </label>
+                          <label>
+                            Script de vínculo
+                            <input [name]="'link-script-' + sourceIndex + '-' + projectIndex" [(ngModel)]="project.localLink.preferredLinkScript">
+                          </label>
+                        </div>
+                      }
                     }
-                  </select>
-                </label>
-                <label>
-                  Artefato relativo
-                  <input
-                    [name]="'libraryArtifact' + $index"
-                    [ngModel]="library.artifactRelativePath"
-                    (ngModelChange)="updateLibrary($index, 'artifactRelativePath', $event)"
-                    required
-                    placeholder="dist/minha-lib"
-                  >
-                </label>
-                <label>
-                  Script de vínculo preferido
-                  <input
-                    [name]="'libraryLinkScript' + $index"
-                    [ngModel]="library.preferredLinkScript"
-                    (ngModelChange)="updateLibrary($index, 'preferredLinkScript', $event)"
-                    required
-                    pattern="link:.+"
-                    placeholder="link:web-common"
-                  >
-                </label>
+                  </section>
+                }
               </div>
             }
           </article>
+        } @empty {
+          <div class="empty-sources">Adicione ao menos um path para iniciar a análise.</div>
         }
       </div>
+
+      @if (reviewMode && missingProjects.length) {
+        <section class="missing-projects">
+          <strong>Projetos ausentes na nova análise</strong>
+          <small>
+            Estes projetos serão removidos do catálogo e seus processos serão
+            encerrados somente após a confirmação.
+          </small>
+          @for (project of missingProjects; track project.projectId) {
+            <div>
+              <span>{{ project.name }}</span>
+              <small>{{ project.relativePath }}</small>
+            </div>
+          }
+        </section>
+      }
 
       <div class="field-row">
         <label>
@@ -146,7 +225,6 @@
           </select>
         </label>
       </div>
-
       @if (nodeMode === 'explicit') {
         <app-node-version-picker
           [catalog]="nodeVersions"
@@ -157,11 +235,14 @@
           (refresh)="refreshNodeVersions.emit()"
         />
       }
-
       <footer>
         <button class="button button--ghost" type="button" (click)="dismiss.emit()">Cancelar</button>
         <button class="button button--primary" type="submit" [disabled]="!valid()">
-          {{ workspace ? 'Salvar e redescobrir' : 'Criar workspace' }}
+          {{ !workspace
+            ? 'Criar workspace'
+            : reviewMode
+              ? 'Confirmar redescoberta'
+              : 'Salvar e redescobrir' }}
         </button>
       </footer>
     </form>

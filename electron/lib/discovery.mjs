@@ -1,62 +1,24 @@
-import {
-  readFile,
-  readdir,
-  realpath,
-  stat,
-} from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { resolveNodeRuntime } from './node-resolver.mjs';
 import { enrichProjectsWithGit } from './git-context.mjs';
-import {
-  enrichProjectsWithLibraryLinks,
-  inspectLibraryDirectory,
-} from './library-inspector.mjs';
-
-const IGNORED_DIRECTORIES = new Set([
-  '.angular',
-  '.git',
-  '.idea',
-  '.nx',
-  '.vscode',
-  'coverage',
-  'dist',
-  'node_modules',
-  'out',
-  'tmp',
-]);
-
-const MAX_DEPTH = 8;
-const MAX_DIRECTORIES = 10000;
-
-async function readJson(filePath) {
-  return JSON.parse(await readFile(filePath, 'utf8'));
-}
+import { enrichProjectsWithLibraryLinks } from './library-inspector.mjs';
+import { inspectProjectSource } from './project-detectors.mjs';
 
 async function fileExists(filePath) {
   try {
-    const info = await stat(filePath);
-    return info.isFile();
+    return (await stat(filePath)).isFile();
   } catch {
     return false;
   }
 }
 
-function normalizeRelativePath(value) {
-  return value.split(path.sep).join('/');
-}
-
 function findPortInAngularConfig(angularConfig) {
-  for (const project of Object.values(angularConfig.projects ?? {})) {
+  for (const project of Object.values(angularConfig?.projects ?? {})) {
     const targets = project.architect ?? project.targets ?? {};
-    const preferredTargets = [
-      targets['serve-original'],
-      targets.serve,
-    ].filter(Boolean);
-
-    for (const target of preferredTargets) {
+    for (const target of [targets['serve-original'], targets.serve].filter(Boolean)) {
       const directPort = Number(target.options?.port);
       if (Number.isInteger(directPort) && directPort > 0) return directPort;
-
       for (const configuration of Object.values(target.configurations ?? {})) {
         const port = Number(configuration?.port);
         if (Number.isInteger(port) && port > 0) return port;
@@ -72,87 +34,90 @@ function findPortInScript(script) {
   return match ? Number(match[1]) : null;
 }
 
-function parseFederationConfig(source) {
-  const nameMatch = source.match(/\bname\s*:\s*['"]([^'"]+)['"]/);
-  const exposesBlock = source.match(/\bexposes\s*:\s*\{([\s\S]*?)\}/);
-  const exposes = exposesBlock
-    ? [...exposesBlock[1].matchAll(/['"](\.\/[^'"]+)['"]\s*:/g)]
-        .map((match) => match[1])
-    : [];
-  return {
-    name: nameMatch?.[1] ?? null,
-    exposes,
-  };
-}
-
-function classifyProject({
-  projectPath,
-  angularConfig,
-  federation,
-  hasTenantRegistry = false,
-}) {
-  if (hasTenantRegistry) {
-    return 'shell';
-  }
-  if (path.basename(projectPath) === 'plataforma-template') {
-    return 'template';
-  }
-  if (
-    federation?.exposes.length
-  ) {
-    return 'mfe';
-  }
-  if (
-    Object.values(angularConfig.projects ?? {}).some(
-      (project) => project.projectType === 'library',
-    )
-  ) {
-    return 'library';
-  }
-  if (
-    projectPath.endsWith(`${path.sep}plataforma`) ||
-    projectPath.endsWith(`${path.sep}shell`)
-  ) {
-    return 'shell';
-  }
-  return 'application';
-}
-
-function selectDefaultScript(role, scripts, override) {
-  if (role === 'template') return null;
+function selectDefaultScript(kind, scripts, override) {
   if (override && scripts[override]) return override;
   if (scripts.start) return 'start';
-  if (role === 'library' && scripts.watch) return 'watch';
+  if (kind === 'library' && scripts.watch) return 'watch';
+  if (scripts.dev) return 'dev';
+  if (scripts.serve) return 'serve';
   if (scripts.watch) return 'watch';
   return Object.keys(scripts).find((script) => !script.startsWith('pre')) ?? null;
 }
 
-function buildManifestAssociations(manifests, project) {
-  const matches = [];
+function projectId(source, relativePath) {
+  return relativePath === '.'
+    ? source.rootProjectId
+    : `${source.id}/${relativePath}`;
+}
+
+function effectiveKind(source, candidate) {
+  const stored = source.projects?.find(
+    (project) => project.relativePath === candidate.relativePath,
+  );
+  return {
+    kind: stored?.kind ?? candidate.suggestedKind ?? 'project',
+    kindSource: stored?.kindSource ??
+      (candidate.suggestedKind ? 'detected' : 'user'),
+    localLibraryLink: stored?.localLibraryLink,
+  };
+}
+
+function roleFor(kind, capabilities) {
+  if (kind === 'library') return 'library';
+  if (capabilities.includes('host')) return 'shell';
+  if (capabilities.includes('mfe')) return 'mfe';
+  return 'application';
+}
+
+async function manifestFiles(projects) {
+  const manifests = [];
+  for (const project of projects) {
+    const registryPath = path.join(
+      project.absolutePath,
+      'src',
+      'assets',
+      'tenants',
+      'registry.json',
+    );
+    if (!(await fileExists(registryPath))) continue;
+    try {
+      const registry = JSON.parse(await readFile(registryPath, 'utf8'));
+      for (const item of registry.tenants ?? []) {
+        const manifestPath = path.resolve(
+          path.dirname(registryPath),
+          item.manifestPath ?? item.path ?? '',
+        );
+        if (!(await fileExists(manifestPath))) continue;
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+        if (manifest.tenantId && Array.isArray(manifest.microFrontends)) {
+          manifests.push(manifest);
+        }
+      }
+    } catch {
+      // Manifests remain optional metadata.
+    }
+  }
+  return manifests;
+}
+
+function registrationsFor(manifests, project) {
+  const registrations = [];
   for (const manifest of manifests) {
     for (const remote of manifest.microFrontends ?? []) {
-      const matchesFederation =
-        project.federation?.name &&
-        remote.remoteName === project.federation.name;
-      const normalizedProjectName = project.name
-        .replace(/^plataforma-/, '')
-        .toLowerCase();
-      const matchesName =
-        remote.id?.toLowerCase() === normalizedProjectName ||
-        remote.name?.toLowerCase() === project.name.toLowerCase();
-
-      if (!matchesFederation && !matchesName) continue;
+      const normalizedName = project.name.replace(/^plataforma-/, '').toLowerCase();
+      if (
+        remote.remoteName !== project.federation?.name &&
+        remote.id?.toLowerCase() !== normalizedName &&
+        remote.name?.toLowerCase() !== project.name.toLowerCase()
+      ) continue;
       let localPort = null;
       try {
-        const localUrl = remote.environments?.local ?? remote.baseUrl;
-        if (localUrl?.startsWith('http')) {
-          const parsed = new URL(localUrl);
-          localPort = parsed.port ? Number(parsed.port) : null;
-        }
+        const url = new URL(remote.environments?.local ?? remote.baseUrl);
+        localPort = url.port ? Number(url.port) : null;
       } catch {
-        localPort = null;
+        // URL is optional metadata.
       }
-      matches.push({
+      registrations.push({
         tenantId: manifest.tenantId,
         tenantName: manifest.tenantName,
         remoteId: remote.id,
@@ -164,357 +129,147 @@ function buildManifestAssociations(manifests, project) {
       });
     }
   }
-  return matches;
+  return registrations;
 }
 
-async function scanRoot(rootPath) {
-  const packageDirectories = [];
-  const manifestPaths = [];
-  const warnings = [];
-  let directoryCount = 0;
-
-  async function visit(directory, depth) {
-    directoryCount += 1;
-    if (directoryCount > MAX_DIRECTORIES) {
-      throw new Error(
-        `A descoberta excedeu o limite de ${MAX_DIRECTORIES} diretórios.`,
-      );
-    }
-    if (depth > MAX_DEPTH) return;
-
-    let entries;
-    try {
-      entries = await readdir(directory, { withFileTypes: true });
-    } catch (error) {
-      warnings.push(`Sem acesso a ${directory}: ${error.message}`);
-      return;
-    }
-
-    const names = new Set(entries.map((entry) => entry.name));
-    if (names.has('package.json') && names.has('angular.json')) {
-      packageDirectories.push(directory);
-    }
-    if (
-      names.has('manifest.json') &&
-      normalizeRelativePath(directory).includes('/src/assets/tenants/')
-    ) {
-      manifestPaths.push(path.join(directory, 'manifest.json'));
-    }
-
-    for (const entry of entries) {
-      if (
-        !entry.isDirectory() ||
-        entry.isSymbolicLink() ||
-        IGNORED_DIRECTORIES.has(entry.name)
-      ) {
-        continue;
-      }
-      await visit(path.join(directory, entry.name), depth + 1);
-    }
+async function libraryMetadata(candidate, sourceConfig, id, kindConfig) {
+  if (kindConfig.kind !== 'library' || !kindConfig.localLibraryLink?.enabled) {
+    return undefined;
   }
-
-  await visit(rootPath, 0);
-  return { packageDirectories, manifestPaths, warnings };
-}
-
-async function loadManifests(manifestPaths, warnings) {
-  const manifests = [];
-  for (const manifestPath of manifestPaths) {
-    try {
-      const manifest = await readJson(manifestPath);
-      if (manifest.tenantId && Array.isArray(manifest.microFrontends)) {
-        manifests.push(manifest);
-      }
-    } catch (error) {
-      warnings.push(`Manifest inválido em ${manifestPath}: ${error.message}`);
-    }
-  }
-  return manifests;
-}
-
-async function inspectProject({
-  projectPath,
-  workspace,
-  boundaryRoot,
-  projectId,
-  relativePath,
-  globalNodePolicy,
-  manifests,
-  warnings,
-}) {
-  try {
-    const packageJson = await readJson(path.join(projectPath, 'package.json'));
-    if (
-      packageJson.name === 'mfe-runner' &&
-      packageJson.main === 'electron/main.mjs'
-    ) {
-      return null;
-    }
-    const angularConfig = await readJson(path.join(projectPath, 'angular.json'));
-    const federationPath = path.join(projectPath, 'federation.config.mjs');
-    const federation = await fileExists(federationPath)
-      ? parseFederationConfig(await readFile(federationPath, 'utf8'))
-      : null;
-    const scripts = packageJson.scripts ?? {};
-    const override = workspace.projectOverrides?.[projectId] ?? {};
-    const hasTenantRegistry = await fileExists(
-      path.join(projectPath, 'src', 'assets', 'tenants', 'registry.json'),
-    );
-    const role = classifyProject({
-      projectPath,
-      angularConfig,
-      federation,
-      hasTenantRegistry,
-    });
-    const scriptPort =
-      findPortInScript(scripts.start) ??
-      findPortInScript(scripts.watch);
-    const angularPort = findPortInAngularConfig(angularConfig);
-
-    const preliminary = {
-      id: projectId,
-      name: packageJson.name ?? path.basename(projectPath),
-      displayName: packageJson.name ?? path.basename(projectPath),
-      relativePath,
-      absolutePath: projectPath,
-      role,
-      scripts,
-      scriptNames: Object.keys(scripts),
-      defaultScript: selectDefaultScript(role, scripts, override.defaultScript),
-      port: scriptPort ?? angularPort,
-      federation,
-      packageEngines: packageJson.engines ?? {},
-      libraryLinkScriptOverrides: override.libraryLinkScripts ?? {},
-      libraryLinks: [],
-    };
-
-    const registrations = buildManifestAssociations(manifests, preliminary);
-    const manifestPort = registrations.find((item) => item.localPort)?.localPort;
-    const port = preliminary.port ?? manifestPort ?? null;
-    const projectWarnings = [];
-
-    if (
-      preliminary.port &&
-      manifestPort &&
-      preliminary.port !== manifestPort
-    ) {
-      projectWarnings.push(
-        `Porta do projeto (${preliminary.port}) diverge do manifest (${manifestPort}).`,
-      );
-    }
-    if (role === 'mfe' && registrations.length === 0) {
-      projectWarnings.push('MFE físico não associado a um manifest descoberto.');
-    }
-    if (role === 'template') {
-      projectWarnings.push(
-        'Template de scaffold; não será iniciado pelas ações globais.',
-      );
-    }
-
-    const node = await resolveNodeRuntime({
-      projectPath,
-      workspaceRoot: boundaryRoot,
-      projectPolicy: override.nodePolicy,
-      workspacePolicy: workspace.nodePolicy,
-      globalPolicy: globalNodePolicy,
-    });
-
-    return {
-      ...preliminary,
-      port,
-      registrations,
-      node,
-      warnings: projectWarnings,
-    };
-  } catch (error) {
-    warnings.push(`Projeto ignorado em ${projectPath}: ${error.message}`);
-    return null;
-  }
-}
-
-function orderProjects(projects) {
-  const weights = {
-    shell: 0,
-    library: 1,
-    mfe: 2,
-    application: 3,
-    template: 4,
+  const configured = kindConfig.localLibraryLink;
+  const packageName =
+    configured.packageName ||
+    candidate.libraryPackageName ||
+    candidate.packageJson.name ||
+    candidate.name;
+  const artifactPath = path.resolve(
+    candidate.absolutePath,
+    configured.artifactRelativePath,
+  );
+  return {
+    libraryId: id,
+    packageName,
+    artifactPath,
+    artifactRelativePath: configured.artifactRelativePath,
+    artifactAvailable: await fileExists(path.join(artifactPath, 'package.json')),
+    developmentScript: configured.developmentScript,
+    preferredLinkScript: configured.preferredLinkScript,
   };
-  return [...projects].sort(
-    (left, right) =>
-      (weights[left.role] ?? 2) - (weights[right.role] ?? 2) ||
-      left.name.localeCompare(right.name),
+}
+
+function orderProjects(projects, projectOrder = []) {
+  const positions = new Map(
+    projectOrder.map((projectId, index) => [projectId, index]),
+  );
+  return [...projects].sort((left, right) =>
+    (positions.has(left.id) ? positions.get(left.id) : Number.MAX_SAFE_INTEGER) -
+      (positions.has(right.id) ? positions.get(right.id) : Number.MAX_SAFE_INTEGER) ||
+    left.startupOrder - right.startupOrder ||
+    left.name.localeCompare(right.name)
   );
 }
 
 export async function discoverWorkspace(workspace, globalNodePolicy) {
   const warnings = [];
-  const canonicalShellRoot = await realpath(workspace.shellRootPath);
-  if (
-    !(await fileExists(path.join(canonicalShellRoot, 'package.json'))) ||
-    !(await fileExists(path.join(canonicalShellRoot, 'angular.json')))
-  ) {
-    throw new Error(
-      'O path do shell deve conter package.json e angular.json.',
-    );
-  }
+  const discoveredPaths = new Set();
+  const preliminary = [];
+  const normalizedSources = [];
 
-  const normalizedRoots = [];
-  for (const root of workspace.mfeRoots) {
-    normalizedRoots.push({
-      ...root,
-      rootPath: await realpath(root.rootPath),
-    });
-  }
-  const normalizedWorkspace = {
-    ...workspace,
-    shellRootPath: canonicalShellRoot,
-    mfeRoots: normalizedRoots,
-    libraries: [],
-  };
-
-  const configuredLibraries = [];
-  for (const library of workspace.libraries ?? []) {
-    const metadata = await inspectLibraryDirectory(
-      library.rootPath,
-      library,
-    );
-    configuredLibraries.push({
-      ...library,
-      rootPath: metadata.rootPath,
-      metadata,
-    });
-  }
-  normalizedWorkspace.libraries = configuredLibraries.map(
-    ({ metadata: _metadata, ...library }) => library,
-  );
-
-  const shellScan = await scanRoot(canonicalShellRoot);
-  warnings.push(...shellScan.warnings);
-  const manifests = await loadManifests(shellScan.manifestPaths, warnings);
-  const shellProject = await inspectProject({
-    projectPath: canonicalShellRoot,
-    workspace: normalizedWorkspace,
-    boundaryRoot: canonicalShellRoot,
-    projectId: 'shell',
-    relativePath: '.',
-    globalNodePolicy,
-    manifests,
-    warnings,
-  });
-  if (!shellProject) {
-    throw new Error('Não foi possível descobrir o projeto do shell.');
-  }
-
-  const discoveredPaths = new Set([canonicalShellRoot]);
-  const libraryProjects = [];
-  for (const library of configuredLibraries) {
-    if (discoveredPaths.has(library.rootPath)) {
-      throw new Error(
-        `A biblioteca ${library.rootPath} também está configurada como shell.`,
-      );
-    }
-    discoveredPaths.add(library.rootPath);
-    const project = await inspectProject({
-      projectPath: library.rootPath,
-      workspace: normalizedWorkspace,
-      boundaryRoot: library.rootPath,
-      projectId: `library:${library.id}`,
-      relativePath: '.',
-      globalNodePolicy,
-      manifests,
-      warnings,
-    });
-    if (!project || project.role !== 'library') {
-      throw new Error(
-        `Não foi possível descobrir a biblioteca em ${library.rootPath}.`,
-      );
-    }
-    libraryProjects.push({
-      ...project,
-      defaultScript: library.developmentScript,
-      library: {
-        libraryId: library.id,
-        packageName: library.metadata.packageName,
-        artifactPath: library.metadata.artifactPath,
-        artifactRelativePath: library.metadata.artifactRelativePath,
-        artifactAvailable: await fileExists(
-          path.join(library.metadata.artifactPath, 'package.json'),
-        ),
-        developmentScript: library.developmentScript,
-        preferredLinkScript: library.preferredLinkScript,
-      },
-    });
-  }
-  const mfeProjects = [];
-  for (const root of normalizedRoots) {
-    const scan = await scanRoot(root.rootPath);
-    warnings.push(...scan.warnings);
-    for (const projectPath of scan.packageDirectories) {
-      const canonicalProjectPath = await realpath(projectPath);
-      if (discoveredPaths.has(canonicalProjectPath)) {
-        if (canonicalProjectPath !== canonicalShellRoot) {
-          warnings.push(
-            `Projeto duplicado ignorado em ${canonicalProjectPath}.`,
-          );
-        }
+  for (const source of workspace.projectSources) {
+    const inspection = await inspectProjectSource(source.rootPath);
+    normalizedSources.push({ ...source, rootPath: inspection.rootPath });
+    warnings.push(...inspection.warnings);
+    for (const candidate of inspection.projects) {
+      const canonicalPath = await realpath(candidate.absolutePath);
+      if (discoveredPaths.has(canonicalPath)) {
+        warnings.push(`Projeto duplicado ignorado em ${canonicalPath}.`);
         continue;
       }
-      discoveredPaths.add(canonicalProjectPath);
-      const relativePath = normalizeRelativePath(
-        path.relative(root.rootPath, canonicalProjectPath) || '.',
+      discoveredPaths.add(canonicalPath);
+      const id = projectId(source, candidate.relativePath);
+      if (workspace.excludedProjectIds?.includes(id)) continue;
+      const override = workspace.projectOverrides?.[id] ?? {};
+      const kindConfig = effectiveKind(source, candidate);
+      const capabilities = [...candidate.capabilities];
+      const role = roleFor(kindConfig.kind, capabilities);
+      const scripts = candidate.scripts ?? {};
+      const defaultScript = selectDefaultScript(
+        kindConfig.kind,
+        scripts,
+        override.defaultScript ??
+          kindConfig.localLibraryLink?.developmentScript,
       );
-      const projectId = `${root.id}/${relativePath}`;
-      const project = await inspectProject({
-        projectPath: canonicalProjectPath,
-        workspace: normalizedWorkspace,
-        boundaryRoot: root.rootPath,
-        projectId,
-        relativePath,
-        globalNodePolicy,
-        manifests,
-        warnings,
+      const node = await resolveNodeRuntime({
+        projectPath: canonicalPath,
+        workspaceRoot: inspection.rootPath,
+        projectPolicy: override.nodePolicy,
+        workspacePolicy: workspace.nodePolicy,
+        globalPolicy: globalNodePolicy,
       });
-      if (
-        project &&
-        project.role !== 'shell' &&
-        !normalizedWorkspace.excludedProjectIds?.includes(project.id)
-      ) {
-        mfeProjects.push(project);
-      }
+      preliminary.push({
+        id,
+        sourceId: source.id,
+        name: candidate.name,
+        displayName: candidate.name,
+        relativePath: candidate.relativePath,
+        absolutePath: canonicalPath,
+        role,
+        kind: kindConfig.kind,
+        kindSource: kindConfig.kindSource,
+        capabilities,
+        startupOrder: override.startupOrder ??
+          (kindConfig.kind === 'library' ? 100 : capabilities.includes('host') ? 900 : 500),
+        scripts,
+        scriptNames: Object.keys(scripts),
+        defaultScript,
+        port:
+          findPortInScript(scripts[defaultScript]) ??
+          findPortInAngularConfig(candidate.angularConfig),
+        federation: candidate.federation
+          ? { name: candidate.federation.name, exposes: candidate.federation.exposes }
+          : null,
+        packageEngines: candidate.packageJson.engines ?? {},
+        registrations: [],
+        node,
+        library: await libraryMetadata(candidate, source, id, kindConfig),
+        libraryLinkScriptOverrides: override.libraryLinkScripts ?? {},
+        libraryLinks: [],
+        warnings: candidate.suggestedKind === null &&
+          !source.projects?.some((item) => item.relativePath === candidate.relativePath)
+          ? ['Classificação assumida como Projeto; revise a workspace.']
+          : [],
+      });
     }
   }
-  const projects = [
-    { ...shellProject, role: 'shell' },
-    ...libraryProjects,
-    ...mfeProjects,
-  ];
 
+  const manifests = await manifestFiles(preliminary);
+  for (const project of preliminary) {
+    project.registrations = registrationsFor(manifests, project);
+    const manifestPort = project.registrations.find((item) => item.localPort)?.localPort;
+    project.port ??= manifestPort ?? null;
+    if (project.capabilities.includes('mfe') && !project.registrations.length) {
+      project.warnings.push('Remote físico não associado a um manifest descoberto.');
+    }
+  }
   const portOwners = new Map();
-  for (const project of projects) {
+  for (const project of preliminary) {
     if (!project.port) continue;
-    const owners = portOwners.get(project.port) ?? [];
-    owners.push(project.id);
-    portOwners.set(project.port, owners);
+    portOwners.set(project.port, [...(portOwners.get(project.port) ?? []), project.id]);
   }
   for (const [port, owners] of portOwners) {
     if (owners.length < 2) continue;
-    for (const project of projects.filter((item) => owners.includes(item.id))) {
-      project.warnings.push(
-        `Porta ${port} também é usada por: ${owners
-          .filter((owner) => owner !== project.id)
-          .join(', ')}.`,
-      );
+    for (const project of preliminary.filter((item) => owners.includes(item.id))) {
+      project.warnings.push(`Porta ${port} também é usada por outro projeto.`);
     }
   }
 
-  const projectsWithGit = await enrichProjectsWithGit(orderProjects(projects));
-  const enrichedProjects = await enrichProjectsWithLibraryLinks(
-    projectsWithGit,
+  const withGit = await enrichProjectsWithGit(
+    orderProjects(preliminary, workspace.projectOrder),
   );
+  const projects = await enrichProjectsWithLibraryLinks(withGit);
   return {
-    workspace: normalizedWorkspace,
-    projects: enrichedProjects,
+    workspace: { ...workspace, projectSources: normalizedSources },
+    projects,
     manifests: manifests.map((manifest) => ({
       tenantId: manifest.tenantId,
       tenantName: manifest.tenantName,
@@ -527,10 +282,9 @@ export async function discoverWorkspace(workspace, globalNodePolicy) {
 }
 
 export const __test__ = {
-  classifyProject,
   findPortInAngularConfig,
   findPortInScript,
-  normalizeRelativePath,
-  parseFederationConfig,
+  projectId,
+  roleFor,
   selectDefaultScript,
 };

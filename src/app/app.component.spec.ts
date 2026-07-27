@@ -6,6 +6,7 @@ import {
 } from '@angular/core/testing';
 import { AppComponent } from './app.component';
 import { createBridgeFixture, snapshotFixture } from '../testing/runner-fixtures';
+import { RunnerSnapshot } from './core/models/runner.models';
 
 describe('AppComponent workspace experience', () => {
   let fixture: ComponentFixture<AppComponent>;
@@ -64,6 +65,38 @@ describe('AppComponent workspace experience', () => {
     expect(names).toEqual(['plataforma', 'plataforma-example']);
   });
 
+  it('persists a reordered project list without changing project settings', async () => {
+    const catalog = fixture.componentInstance.runner.snapshot().workspaces[0];
+
+    await fixture.componentInstance.moveProject(
+      catalog,
+      'root-1/example',
+      'up',
+    );
+
+    expect(window.runnerApi?.updateProjectOrder).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1',
+      projectIds: ['root-1/example', 'shell'],
+    });
+    expect(window.runnerApi?.updateProject).not.toHaveBeenCalled();
+  });
+
+  it('disables reorder controls while project filters are active', () => {
+    fixture.componentInstance.projectNameFilter.set('example');
+    fixture.detectChanges();
+    const menu: HTMLButtonElement =
+      fixture.nativeElement.querySelector('.icon-button--more');
+    menu.click();
+    fixture.detectChanges();
+
+    const moveButtons: HTMLButtonElement[] = [
+      ...fixture.nativeElement.querySelectorAll('.tool-menu__panel button'),
+    ].filter((button: HTMLButtonElement) =>
+      button.textContent.includes('Mover para')
+    );
+    expect(moveButtons.every((button) => button.disabled)).toBeTrue();
+  });
+
   it('renders colored semantic icons in workspace actions and summary', () => {
     const actionIcons = [...fixture.nativeElement.querySelectorAll(
       '.projects-heading svg[data-icon]',
@@ -84,7 +117,7 @@ describe('AppComponent workspace experience', () => {
     ]);
   });
 
-  it('explains that an excluded MFE can return on workspace rediscovery', async () => {
+  it('explains that an excluded project can return on workspace rediscovery', async () => {
     const confirmation = spyOn(window, 'confirm').and.returnValue(true);
     const catalog = fixture.componentInstance.runner.snapshot().workspaces[0];
     const project = catalog.projects.find(
@@ -100,6 +133,79 @@ describe('AppComponent workspace experience', () => {
       workspaceId: 'workspace-1',
       projectId: 'root-1/example',
     });
+  });
+
+  it('allows a library to be removed from the workspace without deleting files', async () => {
+    const confirmation = spyOn(window, 'confirm').and.returnValue(true);
+    const catalog = fixture.componentInstance.runner.snapshot().workspaces[0];
+    const library = {
+      ...catalog.projects[0],
+      id: 'source-library',
+      name: 'common-library',
+      displayName: 'common-library',
+      role: 'library' as const,
+      kind: 'library' as const,
+    };
+    const catalogWithLibrary = {
+      ...catalog,
+      projects: [library, ...catalog.projects],
+    };
+
+    await fixture.componentInstance.excludeProject(
+      catalogWithLibrary,
+      library.id,
+    );
+
+    expect(confirmation).toHaveBeenCalledWith(
+      jasmine.stringContaining('Remover biblioteca "common-library"'),
+    );
+    expect(confirmation).toHaveBeenCalledWith(
+      jasmine.stringContaining('nenhum arquivo será apagado'),
+    );
+    expect(window.runnerApi?.excludeProject).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1',
+      projectId: 'source-library',
+    });
+  });
+
+  it('shows a blocking loading state while the workspace is stopped and removed', async () => {
+    const confirmation = spyOn(window, 'confirm').and.returnValue(true);
+    let finishRemoval!: (snapshot: RunnerSnapshot) => void;
+    const pendingRemoval = new Promise<RunnerSnapshot>((resolve) => {
+      finishRemoval = resolve;
+    });
+    const removeWorkspace = window.runnerApi?.removeWorkspace as jasmine.Spy;
+    removeWorkspace.and.returnValue(pendingRemoval);
+    const catalog = fixture.componentInstance.runner.snapshot().workspaces[0];
+
+    const removal = fixture.componentInstance.removeWorkspace(catalog);
+    fixture.detectChanges();
+
+    const loading: HTMLElement =
+      fixture.nativeElement.querySelector('.workspace-removal-loading');
+    expect(confirmation).toHaveBeenCalledWith(
+      jasmine.stringContaining('Os processos serão parados'),
+    );
+    expect(removeWorkspace).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1',
+    });
+    expect(loading.getAttribute('aria-busy')).toBe('true');
+    expect(loading.textContent).toContain('Removendo workspace');
+    expect(loading.textContent).toContain('Workspace');
+    expect(loading.textContent)
+      .toContain('Nenhum arquivo dos projetos será excluído.');
+
+    finishRemoval({
+      ...snapshotFixture,
+      workspaces: [],
+    });
+    await removal;
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.workspaceRemoval()).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.workspace-removal-loading'),
+    ).toBeNull();
   });
 
   it('filters the table between all projects and active processes', () => {
@@ -311,7 +417,9 @@ describe('AppComponent workspace experience', () => {
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('Configuração central');
-    expect(text).toContain(snapshotFixture.workspaces[0].workspace.shellRootPath);
+    expect(text).toContain(
+      snapshotFixture.workspaces[0].workspace.projectSources[0].rootPath,
+    );
     expect(text).toContain('Abrir projetos');
     expect(text).toContain('Configurar');
     expect(text).toContain('Redescobrir');

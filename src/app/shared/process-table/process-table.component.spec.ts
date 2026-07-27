@@ -182,6 +182,58 @@ describe('ProcessTableComponent', () => {
     expect(fixture.componentInstance.toolsProjectId).toBeNull();
   });
 
+  it('offers accessible project reordering from the options menu', () => {
+    const secondProject = {
+      ...projectFixture,
+      id: 'root-1/second',
+      name: 'second',
+      displayName: 'second',
+    };
+    fixture.componentRef.setInput(
+      'projects',
+      [projectFixture, secondProject],
+    );
+    spyOn(fixture.componentInstance.moveProject, 'emit');
+    fixture.detectChanges();
+
+    const menus: HTMLButtonElement[] = [
+      ...fixture.nativeElement.querySelectorAll('.icon-button--more'),
+    ];
+    menus[1].click();
+    fixture.detectChanges();
+    const moveUp: HTMLButtonElement = [
+      ...fixture.nativeElement.querySelectorAll('.tool-menu__panel button'),
+    ].find((button: HTMLButtonElement) =>
+      button.textContent.includes('Mover para cima')
+    ) as HTMLButtonElement;
+
+    expect(moveUp.title).toBe('Mover projeto para cima');
+    expect(moveUp.disabled).toBeFalse();
+    moveUp.click();
+
+    expect(fixture.componentInstance.moveProject.emit)
+      .toHaveBeenCalledOnceWith({
+        projectId: secondProject.id,
+        direction: 'up',
+      });
+  });
+
+  it('disables reordering while the visible list is filtered', () => {
+    fixture.componentRef.setInput('reorderEnabled', false);
+    fixture.detectChanges();
+    const menu: HTMLButtonElement =
+      fixture.nativeElement.querySelector('.icon-button--more');
+    menu.click();
+    fixture.detectChanges();
+
+    const moveButtons: HTMLButtonElement[] = [
+      ...fixture.nativeElement.querySelectorAll('.tool-menu__panel button'),
+    ].filter((button: HTMLButtonElement) =>
+      button.textContent.includes('Mover para')
+    );
+    expect(moveButtons.every((button) => button.disabled)).toBeTrue();
+  });
+
   it('requests removal of an MFE from the Runner list', () => {
     spyOn(fixture.componentInstance.excludeProject, 'emit');
     const button: HTMLButtonElement =
@@ -192,6 +244,31 @@ describe('ProcessTableComponent', () => {
 
     expect(fixture.componentInstance.excludeProject.emit)
       .toHaveBeenCalledOnceWith(projectFixture.id);
+  });
+
+  it('also offers removal for a library', () => {
+    const library = {
+      ...projectFixture,
+      id: 'source-library',
+      name: 'common-library',
+      displayName: 'common-library',
+      role: 'library' as const,
+      kind: 'library' as const,
+      port: undefined,
+    };
+    fixture.componentRef.setInput('projects', [library]);
+    spyOn(fixture.componentInstance.excludeProject, 'emit');
+    fixture.detectChanges();
+
+    const button: HTMLButtonElement =
+      fixture.nativeElement.querySelector('.icon-button--remove');
+    expect(button).not.toBeNull();
+    expect(button.getAttribute('aria-label'))
+      .toBe('Remover common-library da lista');
+
+    button.click();
+    expect(fixture.componentInstance.excludeProject.emit)
+      .toHaveBeenCalledOnceWith(library.id);
   });
 
   it('offers developer tools without emitting a path for executable actions', () => {

@@ -23,10 +23,9 @@ function safeFilename(value) {
 
 export function createPathSanitizer(workspace, projects) {
   const replacements = [
-    [workspace.shellRootPath, '<SHELL_ROOT>'],
-    ...workspace.mfeRoots.map((root, index) => [
-      root.rootPath,
-      `<MFE_ROOT:${index + 1}>`,
+    ...workspace.projectSources.map((source, index) => [
+      source.rootPath,
+      `<SOURCE_ROOT:${index + 1}>`,
     ]),
     ...projects.map((project) => [
       project.absolutePath,
@@ -119,8 +118,9 @@ export function buildDiagnosticArchive({
       environment: workspace.environment,
       ...(includeAbsolutePaths
         ? {
-            shellRootPath: workspace.shellRootPath,
-            mfeRootPaths: workspace.mfeRoots.map((root) => root.rootPath),
+            projectSourcePaths: workspace.projectSources.map(
+              (source) => source.rootPath,
+            ),
           }
         : {}),
     },

@@ -59,33 +59,38 @@ describe('RunnerApiService', () => {
     });
   });
 
-  it('passes the current path as the native picker starting directory', async () => {
+  it('persists project order using identifiers only', async () => {
     const service = TestBed.inject(RunnerApiService);
-    await service.chooseShellDirectory('/workspace/plataforma');
-    await service.chooseMfeDirectory('/workspace/mfes');
-    await service.chooseLibraryDirectory('/workspace/web-common');
-    expect(window.runnerApi?.chooseShellDirectory).toHaveBeenCalledOnceWith({
-      initialPath: '/workspace/plataforma',
-    });
-    expect(window.runnerApi?.chooseMfeDirectory).toHaveBeenCalledOnceWith({
-      initialPath: '/workspace/mfes',
-    });
-    expect(window.runnerApi?.chooseLibraryDirectory).toHaveBeenCalledOnceWith({
-      initialPath: '/workspace/web-common',
+    await service.updateProjectOrder('workspace-1', [
+      'root-1/example',
+      'shell',
+    ]);
+    expect(window.runnerApi?.updateProjectOrder).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1',
+      projectIds: ['root-1/example', 'shell'],
     });
   });
 
-  it('inspects and links libraries through identifier-only bridge requests', async () => {
+  it('passes the current path as the generic picker starting directory', async () => {
     const service = TestBed.inject(RunnerApiService);
-    await service.inspectLibraryDirectory('/workspace/web-common');
+    await service.chooseProjectDirectory('/workspace/plataforma');
+    expect(window.runnerApi?.chooseProjectDirectory).toHaveBeenCalledOnceWith({
+      initialPath: '/workspace/plataforma',
+    });
+  });
+
+  it('inspects sources and links libraries through identifier-only bridge requests', async () => {
+    const service = TestBed.inject(RunnerApiService);
+    await service.inspectProjectSource('/workspace/web-common');
     await service.linkLibraries({
       workspaceId: 'workspace-1',
       libraryIds: ['web-common'],
       projectIds: ['root-1/example'],
     });
 
-    expect(window.runnerApi?.inspectLibraryDirectory).toHaveBeenCalledOnceWith({
+    expect(window.runnerApi?.inspectProjectSource).toHaveBeenCalledOnceWith({
       rootPath: '/workspace/web-common',
+      requestId: jasmine.any(String),
     });
     expect(window.runnerApi?.linkLibraries).toHaveBeenCalledOnceWith({
       workspaceId: 'workspace-1',
@@ -146,9 +151,9 @@ describe('RunnerApiService', () => {
 
   it('exposes bridge failures as an interface error', async () => {
     const bridge = window.runnerApi as jasmine.SpyObj<RunnerBridge>;
-    bridge.refreshWorkspace.and.rejectWith(new Error('Path indisponível'));
+    bridge.startWorkspace.and.rejectWith(new Error('Path indisponível'));
     const service = TestBed.inject(RunnerApiService);
-    await service.refreshWorkspace('workspace-1');
+    await service.startWorkspace('workspace-1');
     expect(service.error()).toBe('Path indisponível');
     expect(service.loading()).toBeFalse();
   });

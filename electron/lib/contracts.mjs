@@ -1,14 +1,13 @@
 export const IPC_CHANNELS = Object.freeze({
   getSnapshot: 'runner:get-snapshot',
   listNodeVersions: 'runner:list-node-versions',
-  chooseShellDirectory: 'runner:choose-shell-directory',
-  chooseMfeDirectory: 'runner:choose-mfe-directory',
-  chooseLibraryDirectory: 'runner:choose-library-directory',
-  inspectLibraryDirectory: 'runner:inspect-library-directory',
+  chooseProjectDirectory: 'runner:choose-project-directory',
+  inspectProjectSource: 'runner:inspect-project-source',
+  projectSourceInspectionProgress: 'runner:project-source-inspection-progress',
+  reviewWorkspace: 'runner:review-workspace',
   addWorkspace: 'runner:add-workspace',
   updateWorkspace: 'runner:update-workspace',
   removeWorkspace: 'runner:remove-workspace',
-  refreshWorkspace: 'runner:refresh-workspace',
   startWorkspace: 'runner:start-workspace',
   stopWorkspace: 'runner:stop-workspace',
   restartWorkspace: 'runner:restart-workspace',
@@ -24,6 +23,7 @@ export const IPC_CHANNELS = Object.freeze({
   exportDiagnostics: 'runner:export-diagnostics',
   updateSettings: 'runner:update-settings',
   updateProject: 'runner:update-project',
+  updateProjectOrder: 'runner:update-project-order',
   excludeProject: 'runner:exclude-project',
   startProject: 'runner:start-project',
   stopProject: 'runner:stop-project',
@@ -86,29 +86,22 @@ export function validateEnvironment(value) {
 
 export function validateWorkspaceInput(value) {
   const workspace = assertPlainObject(value, 'Workspace');
-  if (!Array.isArray(workspace.mfeRootPaths) || !workspace.mfeRootPaths.length) {
-    throw new TypeError('Informe ao menos um path de MFE.');
+  if (!Array.isArray(workspace.projectSources) || !workspace.projectSources.length) {
+    throw new TypeError('Informe ao menos um path de projeto.');
   }
-  if (workspace.mfeRootPaths.length > 100) {
-    throw new TypeError('A workspace excede o limite de 100 paths de MFE.');
+  if (workspace.projectSources.length > 100) {
+    throw new TypeError('A workspace excede o limite de 100 paths.');
   }
-  const mfeRootPaths = workspace.mfeRootPaths.map((rootPath, index) =>
-    assertNonEmptyString(rootPath, `Path de MFE ${index + 1}`),
+  const projectSources = workspace.projectSources.map((source, index) =>
+    validateProjectSourceInput(source, index)
   );
-  if (new Set(mfeRootPaths).size !== mfeRootPaths.length) {
-    throw new TypeError('Não repita o mesmo path de MFE.');
+  const sourcePaths = projectSources.map((source) => source.rootPath);
+  if (new Set(sourcePaths).size !== sourcePaths.length) {
+    throw new TypeError('Não repita o mesmo path de projeto.');
   }
-  const libraries = value.libraries === undefined
-    ? []
-    : assertLibraryInputs(value.libraries);
   return {
     name: assertNonEmptyString(workspace.name, 'Nome da workspace', 100),
-    shellRootPath: assertNonEmptyString(
-      workspace.shellRootPath,
-      'Path do shell',
-    ),
-    mfeRootPaths,
-    libraries,
+    projectSources,
     environment: validateEnvironment(workspace.environment ?? 'local'),
     nodePolicy: validateNodePolicy(
       workspace.nodePolicy ?? { mode: 'inherit' },
@@ -124,49 +117,85 @@ function validateLinkScript(value, label) {
   return script;
 }
 
-export function validateLibraryInput(value, index = 0) {
-  const library = assertPlainObject(value, `Biblioteca ${index + 1}`);
+function validateLocalLibraryLink(value, label) {
+  if (value === undefined || value === null) return undefined;
+  const library = assertPlainObject(value, label);
   const artifactRelativePath = assertNonEmptyString(
     library.artifactRelativePath,
-    `Artefato da biblioteca ${index + 1}`,
+    `${label}: artefato`,
   );
   if (
     artifactRelativePath.startsWith('/') ||
     /^[a-z]:[\\/]/i.test(artifactRelativePath) ||
     artifactRelativePath.split(/[\\/]/).includes('..')
   ) {
-    throw new TypeError(
-      `Artefato da biblioteca ${index + 1} deve ser relativo e seguro.`,
-    );
+    throw new TypeError(`${label}: o artefato deve ser relativo e seguro.`);
   }
   return {
-    rootPath: assertNonEmptyString(
-      library.rootPath,
-      `Path da biblioteca ${index + 1}`,
-    ),
+    enabled: library.enabled === true,
+    packageName: assertNonEmptyString(library.packageName, `${label}: pacote`, 214),
     developmentScript: assertNonEmptyString(
       library.developmentScript,
-      `Script da biblioteca ${index + 1}`,
+      `${label}: script de desenvolvimento`,
       100,
     ),
     artifactRelativePath,
     preferredLinkScript: validateLinkScript(
       library.preferredLinkScript,
-      `Script de vínculo da biblioteca ${index + 1}`,
+      `${label}: script de vínculo`,
     ),
   };
 }
 
-function assertLibraryInputs(value) {
-  if (!Array.isArray(value) || value.length > 25) {
-    throw new TypeError('A workspace excede o limite de 25 bibliotecas.');
+function validateProjectSourceInput(value, index) {
+  const source = assertPlainObject(value, `Fonte ${index + 1}`);
+  if (!Array.isArray(source.projects) || source.projects.length > 1000) {
+    throw new TypeError(`Projetos da fonte ${index + 1} inválidos.`);
   }
-  const libraries = value.map(validateLibraryInput);
-  const paths = libraries.map((library) => library.rootPath);
-  if (new Set(paths).size !== paths.length) {
-    throw new TypeError('Não repita o mesmo path de biblioteca.');
+  const projects = source.projects.map((project, projectIndex) => {
+    const item = assertPlainObject(
+      project,
+      `Projeto ${projectIndex + 1} da fonte ${index + 1}`,
+    );
+    const kind = assertNonEmptyString(item.kind, 'Tipo do projeto', 16);
+    if (!['project', 'library'].includes(kind)) {
+      throw new TypeError('Tipo de projeto inválido.');
+    }
+    if (kind !== 'library' && item.localLibraryLink) {
+      throw new TypeError(
+        'Vínculo local só pode ser configurado para uma biblioteca.',
+      );
+    }
+    const kindSource = item.kindSource === 'user' ? 'user' : 'detected';
+    return {
+      relativePath: assertNonEmptyString(
+        item.relativePath,
+        'Path relativo do projeto',
+        1024,
+      ),
+      kind,
+      kindSource,
+      ...(item.localLibraryLink
+        ? {
+            localLibraryLink: validateLocalLibraryLink(
+              item.localLibraryLink,
+              'Vínculo local',
+            ),
+          }
+        : {}),
+    };
+  });
+  const relativePaths = projects.map((project) => project.relativePath);
+  if (new Set(relativePaths).size !== relativePaths.length) {
+    throw new TypeError('Não repita projetos na mesma fonte.');
   }
-  return libraries;
+  return {
+    ...(source.id
+      ? { id: assertNonEmptyString(source.id, 'ID da fonte', 100) }
+      : {}),
+    rootPath: assertNonEmptyString(source.rootPath, `Path ${index + 1}`),
+    projects,
+  };
 }
 
 export function validateWorkspaceRequest(value) {
@@ -215,12 +244,17 @@ export function validateProjectRequest(value) {
   };
 }
 
-export function validateLibraryInspectionRequest(value) {
-  const request = assertPlainObject(value, 'Inspeção da biblioteca');
+export function validateProjectSourceInspectionRequest(value) {
+  const request = assertPlainObject(value, 'Inspeção da fonte');
   return {
     rootPath: assertNonEmptyString(
       request.rootPath,
-      'Path da biblioteca',
+      'Path do projeto',
+    ),
+    requestId: assertNonEmptyString(
+      request.requestId,
+      'Identificador da inspeção',
+      100,
     ),
   };
 }
@@ -328,5 +362,30 @@ export function validateProjectUpdate(value) {
       ]),
     );
   }
+  if (value.startupOrder !== undefined) {
+    if (
+      !Number.isInteger(value.startupOrder) ||
+      value.startupOrder < 0 ||
+      value.startupOrder > 999
+    ) {
+      throw new TypeError('Ordem de inicialização inválida.');
+    }
+    update.startupOrder = value.startupOrder;
+  }
   return update;
+}
+
+export function validateProjectOrderUpdate(value) {
+  const request = validateWorkspaceRequest(value);
+  const source = assertPlainObject(value, 'Ordenação dos projetos');
+  if (!Array.isArray(source.projectIds) || source.projectIds.length > 5000) {
+    throw new TypeError('Ordenação dos projetos inválida.');
+  }
+  const projectIds = source.projectIds.map((projectId, index) =>
+    assertNonEmptyString(projectId, `Projeto ${index + 1}`, 1024)
+  );
+  if (new Set(projectIds).size !== projectIds.length) {
+    throw new TypeError('A ordenação contém projetos repetidos.');
+  }
+  return { ...request, projectIds };
 }

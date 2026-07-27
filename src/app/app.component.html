@@ -134,14 +134,14 @@
               <div>
                 <span class="eyebrow">Workspace · {{ catalog.workspace.name }}</span>
                 <h2>Aplicações e projetos descobertos</h2>
-                <p class="path">{{ catalog.workspace.shellRootPath }}</p>
+                <p class="path">{{ catalog.workspace.projectSources.length }} fonte(s) configurada(s)</p>
               </div>
               <div class="button-group">
                 <button class="button button--success" type="button" [disabled]="runner.loading() || !runner.snapshot().supervisorConnected" (click)="runner.startWorkspace(catalog.workspace.id)"><app-runner-icon name="play" [size]="15" /> Iniciar todos</button>
                 <button class="button button--stop" type="button" [disabled]="runner.loading() || !runner.snapshot().supervisorConnected" (click)="runner.stopWorkspace(catalog.workspace.id)"><app-runner-icon name="stop" [size]="13" /> Parar todos</button>
                 <button class="button" type="button" [disabled]="runner.loading() || !runner.snapshot().supervisorConnected" (click)="runner.restartWorkspace(catalog.workspace.id)"><app-runner-icon name="restart" [size]="15" /> Reiniciar</button>
-                <button class="button" type="button" [disabled]="runner.loading()" (click)="runner.refreshWorkspace(catalog.workspace.id)"><app-runner-icon name="refresh" [size]="15" /> Redescobrir</button>
-                @if (catalog.workspace.libraries.length) {
+                <button class="button" type="button" [disabled]="runner.loading()" (click)="reviewWorkspace(catalog)"><app-runner-icon name="refresh" [size]="15" /> Redescobrir</button>
+                @if (hasLinkLibraries(catalog)) {
                   <button
                     class="button button--accent"
                     type="button"
@@ -175,7 +175,7 @@
             >
               <section class="panel process-panel">
                 <header class="panel__header">
-                  <div><span class="status-dot"></span><div><strong>Processos locais</strong><small>O shell aparece primeiro; controle cada projeto individualmente.</small></div></div>
+                  <div><span class="status-dot"></span><div><strong>Processos locais</strong><small>Controle cada projeto individualmente ou use as ações globais.</small></div></div>
                   <div class="panel__tools">
                     <div class="project-search" role="search">
                       <app-runner-icon name="search" [size]="14" />
@@ -219,6 +219,7 @@
                   [processes]="runner.processes()"
                   [emptyMessage]="projectEmptyMessage()"
                   [busy]="runner.loading() || !runner.snapshot().supervisorConnected"
+                  [reorderEnabled]="projectVisibility() === 'all' && !projectNameFilter().trim()"
                   (startProject)="processAction('start', $event)"
                   (stopProject)="processAction('stop', $event)"
                   (restartProject)="processAction('restart', $event)"
@@ -226,6 +227,7 @@
                   (inspectLogs)="inspectLogs($event, catalog.workspace.id)"
                   (configureProject)="openProjectSettings($event)"
                   (excludeProject)="excludeProject(catalog, $event)"
+                  (moveProject)="moveProject(catalog, $event.projectId, $event.direction)"
                   (openAddress)="runner.openLocalAddress($event)"
                   (openIde)="runner.openProjectInIde(catalog.workspace.id, $event)"
                   (openFolder)="runner.openProjectFolder(catalog.workspace.id, $event)"
@@ -270,7 +272,7 @@
 
         @case ('workspaces') {
           <section class="section-heading">
-            <div><span class="eyebrow">Configuração central</span><h2>Workspaces</h2><p>Shell e raízes de MFEs são administrados em conjunto.</p></div>
+            <div><span class="eyebrow">Configuração central</span><h2>Workspaces</h2><p>Projetos, raízes e monorepos são administrados em conjunto.</p></div>
             <button class="button button--primary" type="button" (click)="openWorkspaceDialog()">＋ Nova workspace</button>
           </section>
           <section class="workspace-grid">
@@ -278,13 +280,12 @@
               <article class="workspace-card">
                 <header>
                   <span class="workspace-card__mark">◇</span>
-                  <div><h3>{{ catalog.workspace.name }}</h3><p>{{ catalog.workspace.shellRootPath }}</p></div>
+                  <div><h3>{{ catalog.workspace.name }}</h3><p>{{ catalog.workspace.projectSources[0]?.rootPath }}</p></div>
                   <span class="workspace-state">{{ catalog.projects.length ? 'Descoberta' : 'Pendente' }}</span>
                 </header>
                 <div class="workspace-card__stats">
-                  <div><small>Shell</small><strong>{{ catalog.projects.length ? catalog.projects[0].displayName : 'Não descoberto' }}</strong></div>
-                  <div><small>Raízes MFE</small><strong>{{ catalog.workspace.mfeRoots.length }}</strong></div>
-                  <div><small>Bibliotecas</small><strong>{{ catalog.workspace.libraries.length }}</strong></div>
+                  <div><small>Fontes</small><strong>{{ catalog.workspace.projectSources.length }}</strong></div>
+                  <div><small>Bibliotecas</small><strong>{{ catalog.projects.filter(project => project.kind === 'library').length }}</strong></div>
                   <div><small>Projetos</small><strong>{{ catalog.projects.length }}</strong></div>
                   <div><small>Ambiente</small><strong>{{ catalog.workspace.environment.toUpperCase() }}</strong></div>
                 </div>
@@ -292,14 +293,14 @@
                   <p class="warning">{{ catalog.warnings[0] }}</p>
                 }
                 <footer>
-                  <button class="button button--success" type="button" (click)="openProjects(catalog)">Abrir projetos</button>
-                  <button class="button" type="button" (click)="openWorkspaceDialog(catalog.workspace)">⚙ Configurar</button>
-                  <button class="button" type="button" (click)="runner.refreshWorkspace(catalog.workspace.id)">⟳ Redescobrir</button>
-                  <button class="button button--danger" type="button" (click)="removeWorkspace(catalog)">Remover</button>
+                  <button class="button button--success" type="button" [disabled]="workspaceRemoval() !== null" (click)="openProjects(catalog)">Abrir projetos</button>
+                  <button class="button" type="button" [disabled]="workspaceRemoval() !== null" (click)="openWorkspaceDialog(catalog.workspace)">⚙ Configurar</button>
+                  <button class="button" type="button" [disabled]="workspaceRemoval() !== null" (click)="reviewWorkspace(catalog)">⟳ Redescobrir</button>
+                  <button class="button button--danger" type="button" [disabled]="workspaceRemoval() !== null" (click)="removeWorkspace(catalog)">Remover</button>
                 </footer>
               </article>
             } @empty {
-              <section class="empty-state"><span>◇</span><h2>Nenhuma workspace configurada</h2><p>Adicione o shell e os paths de MFEs em uma única etapa.</p></section>
+              <section class="empty-state"><span>◇</span><h2>Nenhuma workspace configurada</h2><p>Adicione projetos, raízes ou monorepos em uma única etapa.</p></section>
             }
           </section>
         }
@@ -342,7 +343,7 @@
             </article>
             <article class="settings-card settings-card--wide">
               <h3>Encerramento seguro</h3>
-              <p>Escolha o que acontece com shell, bibliotecas e MFEs ao fechar a interface.</p>
+              <p>Escolha o que acontece com os projetos ao fechar a interface.</p>
               <fieldset class="exit-policy" [disabled]="runner.loading()">
                 <label>
                   <input
@@ -482,15 +483,37 @@
   </main>
 </div>
 
+@if (workspaceRemoval(); as removal) {
+  <div class="workspace-removal-backdrop" aria-hidden="true"></div>
+  <section
+    class="workspace-removal-loading"
+    role="dialog"
+    aria-modal="true"
+    aria-busy="true"
+    aria-labelledby="workspace-removal-title"
+    aria-describedby="workspace-removal-description"
+  >
+    <span class="workspace-removal-spinner" aria-hidden="true"></span>
+    <div>
+      <span class="eyebrow">Aguarde</span>
+      <h2 id="workspace-removal-title">Removendo workspace</h2>
+      <strong>{{ removal.name }}</strong>
+      <p id="workspace-removal-description">
+        Parando os projetos e removendo a configuração privada do Runner.
+      </p>
+      <small>Nenhum arquivo dos projetos será excluído.</small>
+    </div>
+  </section>
+}
+
 <app-workspace-dialog
   [open]="workspaceDialogOpen()"
   [workspace]="workspaceDialogTarget()"
+  [reviewMode]="workspaceDialogReviewMode()"
   [nodeVersions]="runner.nodeVersions()"
   [nodeVersionsLoading]="runner.nodeVersionsLoading()"
   (dismiss)="closeWorkspaceDialog()"
-  (browseShell)="browseShell($event)"
-  (browseMfe)="browseMfe($event)"
-  (browseLibrary)="browseLibrary($event)"
+  (addPath)="addProjectPath()"
   (saveWorkspace)="saveWorkspace($event)"
   (refreshNodeVersions)="runner.refreshNodeVersions()"
 />

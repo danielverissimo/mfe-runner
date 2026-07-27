@@ -23,6 +23,7 @@ export interface ProjectSettingsChange {
   nodePolicy: NodePolicy;
   defaultScript?: string;
   libraryLinkScripts: Record<string, string>;
+  startupOrder: number;
 }
 
 @Component({
@@ -48,6 +49,7 @@ export class ProjectSettingsDialogComponent implements OnChanges {
   nodeVersion = '';
   defaultScript = '';
   libraryLinkScripts: Record<string, string> = {};
+  startupOrder = 500;
 
   ngOnChanges(changes: SimpleChanges): void {
     if (
@@ -70,6 +72,7 @@ export class ProjectSettingsDialogComponent implements OnChanges {
       },
       ...(this.defaultScript ? { defaultScript: this.defaultScript } : {}),
       libraryLinkScripts: { ...this.libraryLinkScripts },
+      startupOrder: Math.max(0, Math.min(999, Math.round(this.startupOrder))),
     });
   }
 
@@ -81,10 +84,10 @@ export class ProjectSettingsDialogComponent implements OnChanges {
   roleLabel(): string {
     return {
       library: 'Biblioteca',
-      mfe: 'Micro front-end',
-      shell: 'Shell',
-      application: 'Aplicação Angular',
-      template: 'Template',
+      mfe: 'Projeto · MFE',
+      shell: 'Projeto · Host',
+      application: 'Projeto',
+      template: 'Projeto',
     }[this.project.role];
   }
 
@@ -120,6 +123,9 @@ export class ProjectSettingsDialogComponent implements OnChanges {
       this.project.defaultScript ??
       this.project.scriptNames[0] ??
       '';
+    this.startupOrder =
+      override?.startupOrder ??
+      this.project.startupOrder;
     this.libraryLinkScripts = {
       ...(override?.libraryLinkScripts ?? {}),
     };

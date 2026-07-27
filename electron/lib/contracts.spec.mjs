@@ -5,12 +5,13 @@ import {
   validateDiagnosticExportRequest,
   validateDirectoryPickerRequest,
   validateIdePreference,
-  validateLibraryInspectionRequest,
   validateLibraryLinkRequest,
   validateLocalAddressRequest,
   validateNodePolicy,
   validateProcessRequest,
+  validateProjectOrderUpdate,
   validateProjectRequest,
+  validateProjectSourceInspectionRequest,
   validateWorkspaceInput,
 } from './contracts.mjs';
 
@@ -29,64 +30,100 @@ test('directory picker accepts only an optional bounded initial path', () => {
   );
 });
 
-test('validates one shell and one or more MFE paths per workspace', () => {
+test('validates one or more unified project sources per workspace', () => {
   assert.deepEqual(validateWorkspaceInput({
     name: 'Valloo',
-    shellRootPath: '/workspace/shell',
-    mfeRootPaths: ['/workspace/mfes-a', '/workspace/mfes-b'],
-    libraries: [],
+    projectSources: [{
+      id: 'source-a',
+      rootPath: '/workspace/projects-a',
+      projects: [{
+        relativePath: '.',
+        kind: 'project',
+        kindSource: 'detected',
+      }],
+    }, {
+      rootPath: '/workspace/projects-b',
+      projects: [],
+    }],
     environment: 'local',
     nodePolicy: { mode: 'auto' },
     command: 'ignored',
   }), {
     name: 'Valloo',
-    shellRootPath: '/workspace/shell',
-    mfeRootPaths: ['/workspace/mfes-a', '/workspace/mfes-b'],
-    libraries: [],
+    projectSources: [{
+      id: 'source-a',
+      rootPath: '/workspace/projects-a',
+      projects: [{
+        relativePath: '.',
+        kind: 'project',
+        kindSource: 'detected',
+      }],
+    }, {
+      rootPath: '/workspace/projects-b',
+      projects: [],
+    }],
     environment: 'local',
     nodePolicy: { mode: 'auto' },
   });
   assert.throws(
     () => validateWorkspaceInput({
       name: 'Empty',
-      shellRootPath: '/shell',
-      mfeRootPaths: [],
+      projectSources: [],
     }),
-    /ao menos um path/,
+    /ao menos um path de projeto/,
   );
   assert.throws(
     () => validateWorkspaceInput({
       name: 'Duplicate',
-      shellRootPath: '/shell',
-      mfeRootPaths: ['/mfes', '/mfes'],
+      projectSources: [
+        { rootPath: '/projects', projects: [] },
+        { rootPath: '/projects', projects: [] },
+      ],
     }),
     /repita/,
   );
 });
 
-test('validates library configuration and bounded identifier-only link requests', () => {
+test('validates optional local linking and bounded identifier-only link requests', () => {
   const workspace = validateWorkspaceInput({
     name: 'Valloo',
-    shellRootPath: '/workspace/shell',
-    mfeRootPaths: ['/workspace/mfes'],
-    libraries: [{
+    projectSources: [{
       rootPath: '/workspace/web-common',
+      projects: [{
+        relativePath: '.',
+        kind: 'library',
+        kindSource: 'user',
+        localLibraryLink: {
+          enabled: true,
+          packageName: 'web-common-lib',
+          developmentScript: 'watch',
+          artifactRelativePath: 'dist/web-common-lib',
+          preferredLinkScript: 'link:web-common',
+          command: 'ignored',
+        },
+      }],
+    }],
+  });
+  assert.deepEqual(workspace.projectSources[0].projects[0], {
+    relativePath: '.',
+    kind: 'library',
+    kindSource: 'user',
+    localLibraryLink: {
+      enabled: true,
+      packageName: 'web-common-lib',
       developmentScript: 'watch',
       artifactRelativePath: 'dist/web-common-lib',
       preferredLinkScript: 'link:web-common',
-      command: 'ignored',
-    }],
+    },
   });
-  assert.deepEqual(workspace.libraries, [{
+  assert.deepEqual(validateProjectSourceInspectionRequest({
     rootPath: '/workspace/web-common',
-    developmentScript: 'watch',
-    artifactRelativePath: 'dist/web-common-lib',
-    preferredLinkScript: 'link:web-common',
-  }]);
-  assert.deepEqual(validateLibraryInspectionRequest({
-    rootPath: '/workspace/web-common',
+    requestId: 'scan-1',
     command: 'ignored',
-  }), { rootPath: '/workspace/web-common' });
+  }), {
+    rootPath: '/workspace/web-common',
+    requestId: 'scan-1',
+  });
   assert.deepEqual(validateLibraryLinkRequest({
     workspaceId: 'workspace',
     libraryIds: ['web-common', 'web-common'],
@@ -101,13 +138,19 @@ test('validates library configuration and bounded identifier-only link requests'
   assert.throws(
     () => validateWorkspaceInput({
       name: 'Unsafe',
-      shellRootPath: '/workspace/shell',
-      mfeRootPaths: ['/workspace/mfes'],
-      libraries: [{
+      projectSources: [{
         rootPath: '/workspace/lib',
-        developmentScript: 'watch',
-        artifactRelativePath: '../outside',
-        preferredLinkScript: 'postinstall',
+        projects: [{
+          relativePath: '.',
+          kind: 'library',
+          localLibraryLink: {
+            enabled: true,
+            packageName: 'library',
+            developmentScript: 'watch',
+            artifactRelativePath: '../outside',
+            preferredLinkScript: 'postinstall',
+          },
+        }],
       }],
     }),
     /relativo e seguro|começar com link:/,
@@ -141,6 +184,31 @@ test('process and project requests accept only workspace and project identifiers
     workspaceId: 'workspace',
     projectId: 'root/project',
   });
+});
+
+test('validates a bounded unique visual project order', () => {
+  assert.deepEqual(validateProjectOrderUpdate({
+    workspaceId: 'workspace',
+    projectIds: ['root/first', 'root/second'],
+    paths: ['/unsafe'],
+  }), {
+    workspaceId: 'workspace',
+    projectIds: ['root/first', 'root/second'],
+  });
+  assert.throws(
+    () => validateProjectOrderUpdate({
+      workspaceId: 'workspace',
+      projectIds: ['root/first', 'root/first'],
+    }),
+    /projetos repetidos/,
+  );
+  assert.throws(
+    () => validateProjectOrderUpdate({
+      workspaceId: 'workspace',
+      projectIds: 'root/first',
+    }),
+    /Ordenação dos projetos inválida/,
+  );
 });
 
 test('local browser requests accept only a valid TCP port', () => {

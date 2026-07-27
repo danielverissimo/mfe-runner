@@ -11,6 +11,11 @@ export const shellFixture: DiscoveredProject = {
   relativePath: '.',
   absolutePath: '/workspace/plataforma',
   role: 'shell',
+  kind: 'project',
+  kindSource: 'detected',
+  capabilities: ['angular', 'host'],
+  sourceId: 'source-shell',
+  startupOrder: 900,
   scripts: { start: 'ng serve' },
   scriptNames: ['start'],
   defaultScript: 'start',
@@ -44,6 +49,11 @@ export const projectFixture: DiscoveredProject = {
   relativePath: 'example',
   absolutePath: '/workspace/mfes/example',
   role: 'mfe',
+  kind: 'project',
+  kindSource: 'detected',
+  capabilities: ['angular', 'mfe'],
+  sourceId: 'root-1',
+  startupOrder: 500,
   scripts: { start: 'ng serve --configuration=des', test: 'ng test' },
   scriptNames: ['start', 'test'],
   defaultScript: 'start',
@@ -77,7 +87,7 @@ export const projectFixture: DiscoveredProject = {
 
 export const snapshotFixture: RunnerSnapshot = {
   config: {
-    version: 4,
+    version: 5,
     settings: {
       globalNodePolicy: { mode: 'auto' },
       stopProcessesOnExit: true,
@@ -87,9 +97,20 @@ export const snapshotFixture: RunnerSnapshot = {
     workspaces: [{
       id: 'workspace-1',
       name: 'Workspace',
-      shellRootPath: '/workspace/plataforma',
-      mfeRoots: [{ id: 'root-1', rootPath: '/workspace/mfes' }],
-      libraries: [],
+      projectSources: [
+        {
+          id: 'source-shell',
+          rootPath: '/workspace/plataforma',
+          rootProjectId: 'shell',
+          projects: [{ relativePath: '.', kind: 'project', kindSource: 'detected' }],
+        },
+        {
+          id: 'root-1',
+          rootPath: '/workspace/mfes',
+          rootProjectId: 'root-1/.',
+          projects: [{ relativePath: 'example', kind: 'project', kindSource: 'detected' }],
+        },
+      ],
       environment: 'local',
       nodePolicy: { mode: 'inherit' },
       projectOverrides: {},
@@ -100,9 +121,20 @@ export const snapshotFixture: RunnerSnapshot = {
     workspace: {
       id: 'workspace-1',
       name: 'Workspace',
-      shellRootPath: '/workspace/plataforma',
-      mfeRoots: [{ id: 'root-1', rootPath: '/workspace/mfes' }],
-      libraries: [],
+      projectSources: [
+        {
+          id: 'source-shell',
+          rootPath: '/workspace/plataforma',
+          rootProjectId: 'shell',
+          projects: [{ relativePath: '.', kind: 'project', kindSource: 'detected' }],
+        },
+        {
+          id: 'root-1',
+          rootPath: '/workspace/mfes',
+          rootProjectId: 'root-1/.',
+          projects: [{ relativePath: 'example', kind: 'project', kindSource: 'detected' }],
+        },
+      ],
       environment: 'local',
       nodePolicy: { mode: 'inherit' },
       projectOverrides: {},
@@ -147,14 +179,12 @@ export function createBridgeFixture(
   const bridge = jasmine.createSpyObj<RunnerBridge>('RunnerBridge', [
     'getSnapshot',
     'listNodeVersions',
-    'chooseShellDirectory',
-    'chooseMfeDirectory',
-    'chooseLibraryDirectory',
-    'inspectLibraryDirectory',
+    'chooseProjectDirectory',
+    'inspectProjectSource',
+    'reviewWorkspace',
     'addWorkspace',
     'updateWorkspace',
     'removeWorkspace',
-    'refreshWorkspace',
     'startWorkspace',
     'stopWorkspace',
     'restartWorkspace',
@@ -170,6 +200,7 @@ export function createBridgeFixture(
     'linkLibraries',
     'updateSettings',
     'updateProject',
+    'updateProjectOrder',
     'excludeProject',
     'startProject',
     'stopProject',
@@ -182,6 +213,7 @@ export function createBridgeFixture(
     'installUpdate',
     'onSnapshot',
     'onLog',
+    'onProjectSourceInspectionProgress',
     'onUpdateState',
   ]);
   bridge.getSnapshot.and.resolveTo(snapshot);
@@ -191,22 +223,30 @@ export function createBridgeFixture(
     versions: ['24.15.0', '22.12.0'],
     message: '2 versões instaladas.',
   });
-  bridge.chooseShellDirectory.and.resolveTo('/workspace/plataforma');
-  bridge.chooseMfeDirectory.and.resolveTo('/workspace/mfes');
-  bridge.chooseLibraryDirectory.and.resolveTo('/workspace/web-common');
-  bridge.inspectLibraryDirectory.and.resolveTo({
-    rootPath: '/workspace/web-common',
-    angularProject: 'web-common-lib',
-    packageName: 'web-common-lib',
-    scripts: ['build', 'watch'],
-    developmentScript: 'watch',
-    artifactRelativePath: 'dist/web-common-lib',
-    preferredLinkScript: 'link:web-common',
+  bridge.chooseProjectDirectory.and.resolveTo('/workspace/mfes');
+  bridge.inspectProjectSource.and.resolveTo({
+    rootPath: '/workspace/mfes',
+    sourceType: 'root',
+    warnings: [],
+    projects: [{
+      name: 'plataforma-example',
+      relativePath: 'example',
+      technology: 'Node.js',
+      suggestedKind: 'project',
+      evidence: ['package.json', 'Script executável'],
+      capabilities: ['angular', 'mfe'],
+      scripts: ['start', 'test'],
+      localLinkSuggestion: null,
+    }],
+  });
+  bridge.reviewWorkspace.and.resolveTo({
+    workspaceId: 'workspace-1',
+    sources: [],
+    missingProjects: [],
   });
   bridge.addWorkspace.and.resolveTo(snapshot);
   bridge.updateWorkspace.and.resolveTo(snapshot);
   bridge.removeWorkspace.and.resolveTo(snapshot);
-  bridge.refreshWorkspace.and.resolveTo(snapshot);
   bridge.startWorkspace.and.resolveTo({ snapshot, failures: [] });
   bridge.stopWorkspace.and.resolveTo(snapshot);
   bridge.restartWorkspace.and.resolveTo({ snapshot, failures: [] });
@@ -234,6 +274,7 @@ export function createBridgeFixture(
   bridge.linkLibraries.and.resolveTo({ snapshot, results: [] });
   bridge.updateSettings.and.resolveTo(snapshot);
   bridge.updateProject.and.resolveTo(snapshot);
+  bridge.updateProjectOrder.and.resolveTo(snapshot);
   bridge.excludeProject.and.resolveTo(snapshot);
   bridge.startProject.and.resolveTo(snapshot);
   bridge.stopProject.and.resolveTo(snapshot);
@@ -274,6 +315,7 @@ export function createBridgeFixture(
   });
   bridge.onSnapshot.and.returnValue(() => undefined);
   bridge.onLog.and.returnValue(() => undefined);
+  bridge.onProjectSourceInspectionProgress.and.returnValue(() => undefined);
   bridge.onUpdateState.and.returnValue(() => undefined);
   return bridge;
 }

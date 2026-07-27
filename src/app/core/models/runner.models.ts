@@ -1,5 +1,8 @@
 export type NodePolicyMode = 'inherit' | 'auto' | 'explicit';
 export type RunnerEnvironment = 'local' | 'des' | 'hom' | 'prod';
+export type ProjectKind = 'project' | 'library';
+export type ProjectSourceType = 'project' | 'root' | 'monorepo';
+export type ProjectCapability = 'angular' | 'host' | 'mfe';
 export type ProjectRole =
   | 'library'
   | 'mfe'
@@ -60,38 +63,103 @@ export interface ProjectOverride {
   nodePolicy?: NodePolicy;
   defaultScript?: string;
   libraryLinkScripts?: Record<string, string>;
+  startupOrder?: number;
 }
 
-export interface WorkspaceMfeRoot {
-  id: string;
-  rootPath: string;
-}
-
-export interface WorkspaceLibraryInput {
-  rootPath: string;
+export interface LocalLibraryLinkConfig {
+  enabled: boolean;
+  packageName: string;
   developmentScript: string;
   artifactRelativePath: string;
   preferredLinkScript: string;
 }
 
-export interface WorkspaceLibraryConfig extends WorkspaceLibraryInput {
+export interface ProjectSourceProjectConfig {
+  relativePath: string;
+  kind: ProjectKind;
+  kindSource: 'detected' | 'user';
+  localLibraryLink?: LocalLibraryLinkConfig;
+}
+
+export interface ProjectSourceConfig {
   id: string;
+  rootPath: string;
+  rootProjectId: string;
+  projects: ProjectSourceProjectConfig[];
+}
+
+export interface ProjectSourceProjectInput {
+  relativePath: string;
+  kind: ProjectKind;
+  kindSource: 'detected' | 'user';
+  localLibraryLink?: LocalLibraryLinkConfig;
+}
+
+export interface ProjectSourceInput {
+  id?: string;
+  rootPath: string;
+  projects: ProjectSourceProjectInput[];
+}
+
+export interface DetectedProjectCandidate {
+  name: string;
+  relativePath: string;
+  technology: string;
+  suggestedKind: ProjectKind | null;
+  evidence: string[];
+  capabilities: ProjectCapability[];
+  scripts: string[];
+  localLinkSuggestion: Omit<LocalLibraryLinkConfig, 'enabled'> | null;
+  status?: 'existing' | 'new';
+  configuredKind?: ProjectKind;
+  kindSource?: 'detected' | 'user';
+  localLibraryLink?: LocalLibraryLinkConfig;
+}
+
+export interface ProjectSourceInspection {
+  rootPath: string;
+  sourceType: ProjectSourceType;
+  projects: DetectedProjectCandidate[];
+  warnings: string[];
+}
+
+export interface ProjectSourceInspectionProgress {
+  requestId: string;
+  phase: 'preparing' | 'scanning' | 'analyzing' | 'complete';
+  percent: number;
+  directoriesScanned: number;
+  projectsFound: number;
+  processedProjects?: number;
+  totalProjects?: number;
+  currentPath: string;
+}
+
+export interface WorkspaceReview {
+  workspaceId: string;
+  sources: Array<ProjectSourceInspection & {
+    sourceId: string;
+    status: 'existing' | 'new';
+  }>;
+  missingProjects: Array<{
+    projectId: string;
+    name: string;
+    relativePath: string;
+  }>;
 }
 
 export interface WorkspaceConfig {
   id: string;
   name: string;
-  shellRootPath: string;
-  mfeRoots: WorkspaceMfeRoot[];
-  libraries: WorkspaceLibraryConfig[];
+  projectSources: ProjectSourceConfig[];
   environment: RunnerEnvironment;
   nodePolicy: NodePolicy;
   projectOverrides: Record<string, ProjectOverride>;
+  projectOrder?: string[];
   excludedProjectIds: string[];
 }
 
 export interface RunnerConfig {
-  version: 4;
+  version: 5;
   settings: RunnerSettings;
   workspaces: WorkspaceConfig[];
 }
@@ -127,6 +195,11 @@ export interface DiscoveredProject {
   relativePath: string;
   absolutePath: string;
   role: ProjectRole;
+  kind: ProjectKind;
+  kindSource: 'detected' | 'user';
+  capabilities: ProjectCapability[];
+  sourceId: string;
+  startupOrder: number;
   scripts: Record<string, string>;
   scriptNames: string[];
   defaultScript: string | null;
@@ -280,9 +353,7 @@ export interface RunnerSnapshot {
 
 export interface WorkspaceInput {
   name: string;
-  shellRootPath: string;
-  mfeRootPaths: string[];
-  libraries: WorkspaceLibraryInput[];
+  projectSources: ProjectSourceInput[];
   environment: RunnerEnvironment;
   nodePolicy: NodePolicy;
 }
@@ -291,16 +362,6 @@ export interface ProcessRequest {
   workspaceId: string;
   projectId: string;
   script?: string;
-}
-
-export interface LibraryInspection {
-  rootPath: string;
-  packageName: string;
-  angularProject: string;
-  scripts: string[];
-  developmentScript: string;
-  artifactRelativePath: string;
-  preferredLinkScript: string;
 }
 
 export interface LibraryLinkRequest {
@@ -335,24 +396,22 @@ export interface DiagnosticExportResult {
 export interface RunnerBridge {
   getSnapshot(): Promise<RunnerSnapshot>;
   listNodeVersions(): Promise<NodeVersionCatalog>;
-  chooseShellDirectory(input?: {
+  chooseProjectDirectory(input?: {
     initialPath?: string;
   }): Promise<string | null>;
-  chooseMfeDirectory(input?: {
-    initialPath?: string;
-  }): Promise<string | null>;
-  chooseLibraryDirectory(input?: {
-    initialPath?: string;
-  }): Promise<string | null>;
-  inspectLibraryDirectory(input: {
+  inspectProjectSource(input: {
     rootPath: string;
-  }): Promise<LibraryInspection>;
+    requestId: string;
+  }): Promise<ProjectSourceInspection>;
+  onProjectSourceInspectionProgress(
+    callback: (progress: ProjectSourceInspectionProgress) => void,
+  ): () => void;
+  reviewWorkspace(input: { workspaceId: string }): Promise<WorkspaceReview>;
   addWorkspace(input: WorkspaceInput): Promise<RunnerSnapshot>;
   updateWorkspace(
     input: WorkspaceInput & { workspaceId: string },
   ): Promise<RunnerSnapshot>;
   removeWorkspace(input: { workspaceId: string }): Promise<RunnerSnapshot>;
-  refreshWorkspace(input: { workspaceId: string }): Promise<RunnerSnapshot>;
   startWorkspace(input: {
     workspaceId: string;
   }): Promise<{ snapshot: RunnerSnapshot; failures: unknown[] }>;
@@ -392,6 +451,11 @@ export interface RunnerBridge {
     nodePolicy?: NodePolicy;
     defaultScript?: string;
     libraryLinkScripts?: Record<string, string>;
+    startupOrder?: number;
+  }): Promise<RunnerSnapshot>;
+  updateProjectOrder(input: {
+    workspaceId: string;
+    projectIds: string[];
   }): Promise<RunnerSnapshot>;
   excludeProject(input: {
     workspaceId: string;

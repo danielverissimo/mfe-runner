@@ -34,6 +34,7 @@ describe('ProjectSettingsDialogComponent', () => {
     expect(text).toContain(projectFixture.displayName);
     expect(text).toContain('Comando padrão');
     expect(text).toContain('Política de Node');
+    expect(text).toContain('Ordem de inicialização');
     expect(text).toContain('Nenhum arquivo do projeto será alterado');
   });
 
@@ -49,6 +50,7 @@ describe('ProjectSettingsDialogComponent', () => {
       defaultScript: 'start',
       nodePolicy: { mode: 'explicit', version: '22.12.0' },
       libraryLinkScripts: {},
+      startupOrder: projectFixture.startupOrder,
     });
   });
 

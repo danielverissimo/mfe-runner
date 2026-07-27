@@ -6,6 +6,16 @@ O container Caddy publica somente a landing page:
 https://mferunner.com/
 ```
 
+A página apresenta o MFE Runner como um gerenciador genérico de ambientes
+locais. Ela cobre projetos exatos, raízes, monorepos, serviços, aplicações,
+micro frontends e bibliotecas, além de descoberta revisável, ordenação por
+workspace, processos persistentes, Node.js, Git, logs e ferramentas de
+desenvolvimento.
+
+O conteúdo está disponível em português do Brasil, espanhol, inglês e francês.
+Todo novo texto visível deve ter uma entrada correspondente em
+`landing-page/app.js`.
+
 Os instaladores e metadados do atualizador ficam exclusivamente nos
 [GitHub Releases](https://github.com/danielverissimo/mfe-runner/releases).
 A landing page consulta a API pública do GitHub por um proxy de leitura em
@@ -35,6 +45,12 @@ curl --fail https://mferunner.com/healthz
 
 O comando sincroniza apenas Docker Compose, Caddy e os arquivos da landing
 page. Nenhum binário é enviado para `mferunner.com`.
+
+Antes do deploy, valide localmente a estrutura estática:
+
+```bash
+node --check docker-server/landing-page/app.js
+```
 
 ## Publicação de uma versão
 

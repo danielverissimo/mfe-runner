@@ -34,8 +34,9 @@ export class ProcessTableComponent {
   @Input({ required: true }) projects: DiscoveredProject[] = [];
   @Input() processes: ManagedProcess[] = [];
   @Input() emptyMessage =
-    'Nenhum projeto Angular executável foi descoberto nestes paths.';
+    'Nenhum projeto executável foi descoberto nestes paths.';
   @Input() busy = false;
+  @Input() reorderEnabled = true;
   @Output() startProject = new EventEmitter<ProcessRequest>();
   @Output() stopProject = new EventEmitter<ProcessRequest>();
   @Output() restartProject = new EventEmitter<ProcessRequest>();
@@ -43,6 +44,10 @@ export class ProcessTableComponent {
   @Output() inspectLogs = new EventEmitter<string>();
   @Output() configureProject = new EventEmitter<string>();
   @Output() excludeProject = new EventEmitter<string>();
+  @Output() moveProject = new EventEmitter<{
+    projectId: string;
+    direction: 'up' | 'down';
+  }>();
   @Output() openAddress = new EventEmitter<number>();
   @Output() openIde = new EventEmitter<string>();
   @Output() openFolder = new EventEmitter<string>();
@@ -123,10 +128,10 @@ export class ProcessTableComponent {
   roleLabel(role: string): string {
     return {
       library: 'Biblioteca',
-      mfe: 'MFE',
-      shell: 'Shell',
-      application: 'Aplicação',
-      template: 'Template',
+      mfe: 'Projeto · MFE',
+      shell: 'Projeto · Host',
+      application: 'Projeto',
+      template: 'Projeto',
     }[role] ?? role;
   }
 
@@ -180,6 +185,20 @@ export class ProcessTableComponent {
 
   closeTools(): void {
     this.toolsProjectId = null;
+  }
+
+  canMove(project: DiscoveredProject, direction: 'up' | 'down'): boolean {
+    if (!this.reorderEnabled || project.orphaned) return false;
+    const configurable = this.projects.filter((item) => !item.orphaned);
+    const index = configurable.findIndex((item) => item.id === project.id);
+    return direction === 'up'
+      ? index > 0
+      : index >= 0 && index < configurable.length - 1;
+  }
+
+  move(projectId: string, direction: 'up' | 'down'): void {
+    this.moveProject.emit({ projectId, direction });
+    this.closeTools();
   }
 
   runTool(action: 'ide' | 'folder' | 'terminal' | 'path', project: DiscoveredProject): void {

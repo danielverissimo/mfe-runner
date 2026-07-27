@@ -26,8 +26,10 @@ through the download selector.
 
 ## Highlights
 
-- Unified workspaces containing one host application, multiple project roots,
-  and optional local libraries.
+- Unified workspaces containing any number of exact projects, project roots,
+  monorepos, and optional locally linked libraries.
+- Automatic source inspection with reviewable Project/Library classification,
+  stable project identities, and a visual order saved per workspace.
 - Individual and batch start, stop, restart, and health monitoring.
 - Persistent lightweight supervisor that can keep processes and logs alive
   after the Electron interface closes.
@@ -61,42 +63,61 @@ Download the recommended installer for your platform from
 
 ## How it works
 
-1. Create a workspace with a name, an exact host project path, one or more
-   project paths, and optional Angular library workspaces. A project path may
-   point to one project or to a directory containing several projects.
+1. Create a workspace and add one or more paths. Each path may point to an
+   exact project, a root containing multiple projects, or a monorepo.
 2. MFE Runner scans only the configured roots. It ignores generated,
    dependency, and VCS directories such as `node_modules`, `dist`, `.angular`,
    and `.git`.
-3. The host, libraries, and discovered projects appear in one catalog.
-4. MFE Runner reads `package.json`, Angular configuration, federation
-   manifests, ports, and `.nvmrc` files without editing them.
-5. Only scripts already declared in a project's `package.json` may be
+3. Review every detected package and confirm whether it is a Project or a
+   Library. Detection evidence and optional Host/MFE capabilities remain
+   informative and can be overridden without changing project files.
+4. Arrange the catalog in the order that best matches your workflow. The visual
+   order is stored per workspace and remains independent from process startup
+   order.
+5. All confirmed projects appear in one catalog. MFE Runner reads
+   `package.json`, optional Angular/federation metadata, ports, and `.nvmrc`
+   files without editing them.
+6. Only scripts already declared in a project's `package.json` may be
    executed. `start` is preferred on first discovery when available.
-6. Runtime state, logs, health information, and private overrides remain in
+7. Runtime state, logs, health information, and private overrides remain in
    MFE Runner's own user-data directory.
 
-The private configuration format is currently version 4 and stores
-`workspaces[]`. When an older configuration is found, MFE Runner preserves a
-recoverable backup before starting with the current format.
+The private configuration format is currently version 5 and stores unified
+`projectSources[]` inside `workspaces[]`. Version 4 configurations are backed
+up and migrated automatically, preserving stable project IDs, overrides,
+exclusions, visual order, and local-library link settings.
+
+Rediscovery is review-first: new, unchanged, and missing projects are shown
+before the catalog is changed. Canceling the review leaves the active catalog
+and running processes untouched.
 
 ## Local libraries
 
-A workspace may include optional Angular libraries. Each configured library
-must be an exact Angular workspace containing `package.json`, `angular.json`,
-and exactly one Angular project of type `library`.
+A discovered package may be classified as a Library. Angular library metadata
+such as `projectType: library` and `ng-package` provides a reliable automatic
+suggestion, while other packages can be classified manually.
 
 MFE Runner can:
 
-- select `watch` as the development script, falling back to `build`;
+- run a library normally without configuring local linking;
+- optionally enable local linking, selecting `watch` as the development
+  script and falling back to `build`;
 - infer the artifact directory from `ng-package.json`;
 - start the library watcher before linking when the artifact does not exist;
 - link one consumer, all consumers, or all configured libraries;
 - run only an existing consumer script whose name starts with `link:`;
 - restore consumers that were running before a link operation.
 
-Libraries and templates are never treated as consumers. Removing a library
+Libraries are never treated as consumers. Removing a library
 from MFE Runner removes only its private configuration; it does not delete
 files or undo links previously created by project-owned scripts.
+
+## Safe removal
+
+Removing a project hides it from the workspace configuration without deleting
+its directory. Removing a complete workspace first stops its managed processes
+and then deletes only the private MFE Runner configuration. Source files,
+repositories, dependencies, and project-owned links are never removed.
 
 ## Node.js resolution
 
@@ -165,6 +186,13 @@ scripts/                Development, packaging, and release automation
 docker-server/          Landing page and deployment configuration
 vm-smoke-fixture/       Cross-platform smoke-test fixture
 ```
+
+More detailed documentation:
+
+- [User guide](docs/USER_GUIDE.md)
+- [Architecture and security boundaries](docs/ARCHITECTURE.md)
+- [Security policy](SECURITY.md)
+- [Landing-page and release operations](docker-server/README.md)
 
 ### Validation
 

@@ -15,7 +15,7 @@ import {
 } from './contracts.mjs';
 
 export const DEFAULT_CONFIG = Object.freeze({
-  version: 4,
+  version: 5,
   settings: {
     globalNodePolicy: { mode: 'auto' },
     stopProcessesOnExit: false,
@@ -69,53 +69,59 @@ function sanitizeProjectOverrides(overrides) {
               ]),
           );
         }
+        if (
+          Number.isInteger(value.startupOrder) &&
+          value.startupOrder >= 0 &&
+          value.startupOrder <= 999
+        ) {
+          result.startupOrder = value.startupOrder;
+        }
         return [projectId, result];
       }),
   );
 }
 
-function sanitizeLibraries(libraries) {
-  if (!Array.isArray(libraries)) return [];
-  return libraries.flatMap((library) => {
-    if (!library || typeof library !== 'object' || Array.isArray(library)) {
-      return [];
-    }
-    try {
-      const rootPath = typeof library.rootPath === 'string'
-        ? library.rootPath.trim()
-        : '';
-      const developmentScript =
-        typeof library.developmentScript === 'string'
-          ? library.developmentScript.trim()
-          : '';
-      const artifactRelativePath =
-        typeof library.artifactRelativePath === 'string'
-          ? library.artifactRelativePath.trim()
-          : '';
-      const preferredLinkScript =
-        typeof library.preferredLinkScript === 'string'
-          ? library.preferredLinkScript.trim()
-          : '';
-      if (
-        !rootPath ||
-        !developmentScript ||
-        !artifactRelativePath ||
-        !preferredLinkScript.startsWith('link:')
-      ) {
-        return [];
-      }
-      return [{
-        id: typeof library.id === 'string' && library.id
-          ? library.id
-          : randomUUID(),
-        rootPath,
-        developmentScript,
-        artifactRelativePath,
-        preferredLinkScript,
-      }];
-    } catch {
-      return [];
-    }
+function sanitizeSourceProject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!['project', 'library'].includes(value.kind)) return null;
+  if (typeof value.relativePath !== 'string' || !value.relativePath.trim()) {
+    return null;
+  }
+  return {
+    relativePath: value.relativePath.trim(),
+    kind: value.kind,
+    kindSource: value.kindSource === 'user' ? 'user' : 'detected',
+    ...(value.kind === 'library' &&
+        value.localLibraryLink &&
+        typeof value.localLibraryLink === 'object'
+      ? { localLibraryLink: structuredClone(value.localLibraryLink) }
+      : {}),
+  };
+}
+
+function sanitizeProjectSources(sources) {
+  if (!Array.isArray(sources)) return [];
+  return sources.flatMap((source) => {
+    if (
+      !source ||
+      typeof source !== 'object' ||
+      typeof source.rootPath !== 'string' ||
+      !source.rootPath.trim()
+    ) return [];
+    const id = typeof source.id === 'string' && source.id
+      ? source.id
+      : randomUUID();
+    return [{
+      id,
+      rootPath: source.rootPath.trim(),
+      rootProjectId:
+        typeof source.rootProjectId === 'string' && source.rootProjectId
+          ? source.rootProjectId
+          : id,
+      projects: Array.isArray(source.projects)
+        ? source.projects.map(sanitizeSourceProject).filter(Boolean)
+        : [],
+    }];
   });
 }
 
@@ -132,6 +138,10 @@ function sanitizeExcludedProjectIds(projectIds) {
   )];
 }
 
+function sanitizeProjectOrder(projectIds) {
+  return sanitizeExcludedProjectIds(projectIds);
+}
+
 function sanitizeIdePreference(value) {
   try {
     return validateIdePreference(value);
@@ -142,25 +152,8 @@ function sanitizeIdePreference(value) {
 
 function sanitizeWorkspace(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  if (
-    typeof value.shellRootPath !== 'string' ||
-    !value.shellRootPath.trim()
-  ) {
-    return null;
-  }
-  const roots = Array.isArray(value.mfeRoots)
-    ? value.mfeRoots.flatMap((root) => {
-        if (!root || typeof root !== 'object' || Array.isArray(root)) return [];
-        if (typeof root.rootPath !== 'string' || !root.rootPath.trim()) return [];
-        return [{
-          id: typeof root.id === 'string' && root.id
-            ? root.id
-            : randomUUID(),
-          rootPath: root.rootPath.trim(),
-        }];
-      })
-    : [];
-  if (!roots.length) return null;
+  const projectSources = sanitizeProjectSources(value.projectSources);
+  if (!projectSources.length) return null;
   try {
     return {
       id: typeof value.id === 'string' && value.id
@@ -169,14 +162,13 @@ function sanitizeWorkspace(value) {
       name: typeof value.name === 'string' && value.name.trim()
         ? value.name.trim().slice(0, 100)
         : 'Workspace',
-      shellRootPath: value.shellRootPath.trim(),
-      mfeRoots: roots,
-      libraries: sanitizeLibraries(value.libraries),
+      projectSources,
       environment: validateEnvironment(value.environment ?? 'local'),
       nodePolicy: validateNodePolicy(
         value.nodePolicy ?? { mode: 'inherit' },
       ),
       projectOverrides: sanitizeProjectOverrides(value.projectOverrides),
+      projectOrder: sanitizeProjectOrder(value.projectOrder),
       excludedProjectIds: sanitizeExcludedProjectIds(
         value.excludedProjectIds,
       ),
@@ -192,7 +184,7 @@ function sanitizeConfig(value) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    value.version !== 4
+    value.version !== 5
   ) {
     return base;
   }
@@ -217,6 +209,86 @@ function sanitizeConfig(value) {
   return base;
 }
 
+function migrateV4(value) {
+  const base = cloneDefaultConfig();
+  const settings = value.settings ?? {};
+  base.settings = {
+    globalNodePolicy: validateNodePolicy(
+      settings.globalNodePolicy ?? base.settings.globalNodePolicy,
+      { allowInherit: false },
+    ),
+    stopProcessesOnExit:
+      typeof settings.stopProcessesOnExit === 'boolean'
+        ? settings.stopProcessesOnExit
+        : true,
+    logLimit: Number.isInteger(settings.logLimit)
+      ? Math.min(Math.max(settings.logLimit, 200), 10000)
+      : base.settings.logLimit,
+    ide: sanitizeIdePreference(settings.ide),
+  };
+  base.workspaces = (Array.isArray(value.workspaces) ? value.workspaces : [])
+    .flatMap((workspace) => {
+      if (!workspace || typeof workspace !== 'object') return [];
+      const projectSources = [];
+      if (typeof workspace.shellRootPath === 'string' && workspace.shellRootPath) {
+        projectSources.push({
+          id: randomUUID(),
+          rootPath: workspace.shellRootPath,
+          rootProjectId: 'shell',
+          projects: [{
+            relativePath: '.',
+            kind: 'project',
+            kindSource: 'detected',
+          }],
+        });
+      }
+      for (const root of workspace.mfeRoots ?? []) {
+        if (!root?.rootPath) continue;
+        const rootId = root.id || randomUUID();
+        projectSources.push({
+          id: rootId,
+          rootPath: root.rootPath,
+          rootProjectId: `${rootId}/.`,
+          projects: [],
+        });
+      }
+      for (const library of workspace.libraries ?? []) {
+        if (!library?.rootPath) continue;
+        projectSources.push({
+          id: randomUUID(),
+          rootPath: library.rootPath,
+          rootProjectId: `library:${library.id}`,
+          projects: [{
+            relativePath: '.',
+            kind: 'library',
+            kindSource: 'user',
+            localLibraryLink: {
+              enabled: true,
+              packageName: '',
+              developmentScript: library.developmentScript,
+              artifactRelativePath: library.artifactRelativePath,
+              preferredLinkScript: library.preferredLinkScript,
+            },
+          }],
+        });
+      }
+      if (!projectSources.length) return [];
+      return [{
+        id: workspace.id || randomUUID(),
+        name: workspace.name || 'Workspace',
+        projectSources,
+        environment: workspace.environment ?? 'local',
+        nodePolicy: workspace.nodePolicy ?? { mode: 'inherit' },
+        projectOverrides: sanitizeProjectOverrides(workspace.projectOverrides),
+        projectOrder: sanitizeProjectOrder(workspace.projectOrder),
+        excludedProjectIds: sanitizeExcludedProjectIds(
+          workspace.excludedProjectIds,
+        ),
+      }];
+    });
+  return sanitizeConfig(base);
+}
+
 export class ConfigStore {
   #configPath;
   #config;
@@ -238,8 +310,12 @@ export class ConfigStore {
     try {
       const raw = await readFile(this.#configPath, 'utf8');
       const parsed = JSON.parse(raw);
-      if (parsed?.version !== 4) {
-        await this.#backupLegacyConfig();
+      if (parsed?.version === 4) {
+        await this.#backupLegacyConfig('v4');
+        this.#config = migrateV4(parsed);
+        await this.#save();
+      } else if (parsed?.version !== 5) {
+        await this.#backupLegacyConfig(`v${parsed?.version ?? 'legacy'}`);
         this.#config = cloneDefaultConfig();
         await this.#save();
       } else {
@@ -258,22 +334,22 @@ export class ConfigStore {
 
   async addWorkspace(input) {
     const validated = validateWorkspaceInput(input);
-    this.#assertUniqueShellPath(validated.shellRootPath);
     const workspace = {
       id: randomUUID(),
       name: validated.name,
-      shellRootPath: validated.shellRootPath,
-      mfeRoots: validated.mfeRootPaths.map((rootPath) => ({
-        id: randomUUID(),
-        rootPath,
-      })),
-      libraries: validated.libraries.map((library) => ({
-        id: randomUUID(),
-        ...library,
-      })),
+      projectSources: validated.projectSources.map((source) => {
+        const id = randomUUID();
+        return {
+          id,
+          rootPath: source.rootPath,
+          rootProjectId: id,
+          projects: source.projects,
+        };
+      }),
       environment: validated.environment,
       nodePolicy: validated.nodePolicy,
       projectOverrides: {},
+      projectOrder: [],
       excludedProjectIds: [],
     };
     this.#config.workspaces.push(workspace);
@@ -287,33 +363,52 @@ export class ConfigStore {
     );
     if (index === -1) throw new Error('Workspace não encontrada.');
     const validated = validateWorkspaceInput(input);
-    this.#assertUniqueShellPath(validated.shellRootPath, workspaceId);
     const current = this.#config.workspaces[index];
-    const currentRoots = new Map(
-      current.mfeRoots.map((root) => [root.rootPath, root]),
-    );
-    const currentLibraries = new Map(
-      (current.libraries ?? []).map((library) => [
-        library.rootPath,
-        library,
-      ]),
+    const currentSources = new Map(
+      current.projectSources.map((source) => [source.rootPath, source]),
     );
     this.#config.workspaces[index] = {
       ...current,
       name: validated.name,
-      shellRootPath: validated.shellRootPath,
-      mfeRoots: validated.mfeRootPaths.map((rootPath) =>
-        currentRoots.get(rootPath) ?? { id: randomUUID(), rootPath }
-      ),
-      libraries: validated.libraries.map((library) => ({
-        ...(currentLibraries.get(library.rootPath) ?? { id: randomUUID() }),
-        ...library,
-      })),
+      projectSources: validated.projectSources.map((source) => {
+        const existing = currentSources.get(source.rootPath);
+        const id = existing?.id ?? randomUUID();
+        return {
+          id,
+          rootPath: source.rootPath,
+          rootProjectId: existing?.rootProjectId ?? id,
+          projects: source.projects,
+        };
+      }),
       environment: validated.environment,
       nodePolicy: validated.nodePolicy,
     };
+    const validProjectIds = new Set(
+      this.#config.workspaces[index].projectSources.flatMap((source) =>
+        source.projects.map((project) =>
+          project.relativePath === '.'
+            ? source.rootProjectId
+            : `${source.id}/${project.relativePath}`
+        )
+      ),
+    );
+    this.#config.workspaces[index].projectOverrides = Object.fromEntries(
+      Object.entries(this.#config.workspaces[index].projectOverrides)
+        .filter(([projectId]) => validProjectIds.has(projectId)),
+    );
+    this.#config.workspaces[index].projectOrder = [
+      ...new Set(this.#config.workspaces[index].projectOrder ?? []),
+    ].filter((projectId) => validProjectIds.has(projectId));
     const validLibraryIds = new Set(
-      this.#config.workspaces[index].libraries.map((library) => library.id),
+      this.#config.workspaces[index].projectSources.flatMap((source) =>
+        source.projects
+          .filter((project) => project.kind === 'library')
+          .map((project) =>
+            project.relativePath === '.'
+              ? source.rootProjectId
+              : `${source.id}/${project.relativePath}`
+          )
+      ),
     );
     for (const override of Object.values(
       this.#config.workspaces[index].projectOverrides,
@@ -380,9 +475,19 @@ export class ConfigStore {
     if (input.libraryLinkScripts !== undefined) {
       override.libraryLinkScripts = { ...input.libraryLinkScripts };
     }
+    if (input.startupOrder !== undefined) {
+      override.startupOrder = input.startupOrder;
+    }
     workspace.projectOverrides[projectId] = override;
     await this.#save();
     return structuredClone(override);
+  }
+
+  async updateProjectOrder(workspaceId, projectIds) {
+    const workspace = this.#findWorkspace(workspaceId);
+    workspace.projectOrder = [...projectIds];
+    await this.#save();
+    return [...workspace.projectOrder];
   }
 
   async excludeProject(workspaceId, projectId) {
@@ -391,6 +496,8 @@ export class ConfigStore {
       workspace.excludedProjectIds.push(projectId);
     }
     delete workspace.projectOverrides[projectId];
+    workspace.projectOrder = (workspace.projectOrder ?? [])
+      .filter((item) => item !== projectId);
     await this.#save();
   }
 
@@ -409,24 +516,13 @@ export class ConfigStore {
     return workspace;
   }
 
-  #assertUniqueShellPath(shellRootPath, ignoredWorkspaceId) {
-    const duplicate = this.#config.workspaces.some(
-      (workspace) =>
-        workspace.id !== ignoredWorkspaceId &&
-        workspace.shellRootPath === shellRootPath,
-    );
-    if (duplicate) {
-      throw new Error('Este shell já pertence a outra workspace.');
-    }
-  }
-
-  async #backupLegacyConfig() {
+  async #backupLegacyConfig(version = 'legacy') {
     const extension = path.extname(this.#configPath);
     const base = this.#configPath.slice(0, -extension.length);
-    let backupPath = `${base}.v3.backup${extension}`;
+    let backupPath = `${base}.${version}.backup${extension}`;
     try {
       await readFile(backupPath);
-      backupPath = `${base}.v3.backup-${Date.now()}${extension}`;
+      backupPath = `${base}.${version}.backup-${Date.now()}${extension}`;
     } catch {
       // O primeiro nome de backup está disponível.
     }
@@ -446,4 +542,4 @@ export class ConfigStore {
   }
 }
 
-export const __test__ = { sanitizeConfig };
+export const __test__ = { migrateV4, sanitizeConfig };

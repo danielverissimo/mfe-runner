@@ -22,10 +22,11 @@ import {
   validateClipboardWriteRequest,
   validateDiagnosticExportRequest,
   validateLocalAddressRequest,
-  validateLibraryInspectionRequest,
+  validateProjectSourceInspectionRequest,
   validateLibraryLinkRequest,
   validateProcessRequest,
   validateProjectRequest,
+  validateProjectOrderUpdate,
   validateProjectUpdate,
   validateWorkspaceInput,
   validateWorkspaceRequest,
@@ -59,7 +60,10 @@ import {
   defaultDiagnosticFilename,
   writeDiagnosticArchive,
 } from './lib/diagnostic-export.mjs';
-import { inspectLibraryDirectory } from './lib/library-inspector.mjs';
+import {
+  inspectProjectSource,
+  publicSourceInspection,
+} from './lib/project-detectors.mjs';
 import {
   buildLibraryLinkPlan,
   executeLibraryLinks,
@@ -124,7 +128,7 @@ function withValidatedSender(handler) {
     if (!validateSender(event.senderFrame)) {
       throw new Error('Origem IPC não autorizada.');
     }
-    return handler(payload);
+    return handler(payload, event);
   };
 }
 
@@ -235,6 +239,11 @@ function buildSnapshot() {
           relativePath: 'Projeto não encontrado na descoberta atual',
           absolutePath: '',
           role: 'application',
+          kind: 'project',
+          kindSource: 'detected',
+          capabilities: [],
+          sourceId: '',
+          startupOrder: 500,
           scripts: {},
           scriptNames: [],
           defaultScript: null,
@@ -332,59 +341,149 @@ async function validateDirectory(rootPath) {
 
 async function normalizeWorkspaceInput(payload) {
   const input = validateWorkspaceInput(payload);
-  const shellRootPath = await validateDirectory(input.shellRootPath);
-  const mfeRootPaths = [];
+  const projectSources = [];
   const seen = new Set();
-  for (const rootPath of input.mfeRootPaths) {
-    const canonical = await validateDirectory(rootPath);
+  const seenProjectPaths = new Set();
+  for (const source of input.projectSources) {
+    const canonical = await validateDirectory(source.rootPath);
     if (seen.has(canonical)) {
-      throw new Error(`Path de MFE duplicado: ${canonical}`);
+      throw new Error(`Path de projeto duplicado: ${canonical}`);
     }
     seen.add(canonical);
-    mfeRootPaths.push(canonical);
-  }
-  const libraries = [];
-  const seenLibraries = new Set();
-  for (const library of input.libraries) {
-    const canonical = await validateDirectory(library.rootPath);
-    if (canonical === shellRootPath) {
-      throw new Error('O shell não pode ser configurado como biblioteca.');
+    const inspection = await inspectProjectSource(canonical);
+    const candidates = new Map(
+      inspection.projects.map((project) => [project.relativePath, project]),
+    );
+    const selections = new Map(
+      source.projects.map((project) => [project.relativePath, project]),
+    );
+    const projects = inspection.projects.flatMap((candidate) => {
+      if (seenProjectPaths.has(candidate.absolutePath)) return [];
+      seenProjectPaths.add(candidate.absolutePath);
+      const selected = selections.get(candidate.relativePath);
+      if (!selected && !candidate.suggestedKind) {
+        throw new Error(
+          `Classifique o projeto ${candidate.name} antes de salvar.`,
+        );
+      }
+      const requestedDecision = selected ?? {
+        relativePath: candidate.relativePath,
+        kind: candidate.suggestedKind,
+        kindSource: 'detected',
+      };
+      const decision = requestedDecision.kindSource === 'user'
+        ? requestedDecision
+        : {
+            ...requestedDecision,
+            kind: candidate.suggestedKind,
+            kindSource: 'detected',
+          };
+      if (!decision.kind) {
+        throw new Error(
+          `Classifique o projeto ${candidate.name} antes de salvar.`,
+        );
+      }
+      if (
+        decision.localLibraryLink?.enabled &&
+        (decision.kind !== 'library' ||
+          !candidate.scripts[decision.localLibraryLink.developmentScript] ||
+          !decision.localLibraryLink.preferredLinkScript.startsWith('link:'))
+      ) {
+        throw new Error(
+          `Configuração de vínculo inválida para ${candidate.name}.`,
+        );
+      }
+      return [{
+        ...decision,
+        ...(decision.localLibraryLink?.enabled
+          ? {
+              localLibraryLink: {
+                ...decision.localLibraryLink,
+                packageName:
+                  decision.localLibraryLink.packageName ||
+                  candidate.packageJson.name ||
+                  candidate.name,
+              },
+            }
+          : {}),
+      }];
+    });
+    for (const relativePath of selections.keys()) {
+      if (!candidates.has(relativePath)) {
+        throw new Error(`Projeto não encontrado durante a revisão: ${relativePath}`);
+      }
     }
-    if (seenLibraries.has(canonical)) {
-      throw new Error(`Path de biblioteca duplicado: ${canonical}`);
-    }
-    seenLibraries.add(canonical);
-    const inspected = await inspectLibraryDirectory(canonical, library);
-    libraries.push({
-      rootPath: inspected.rootPath,
-      developmentScript: inspected.developmentScript,
-      artifactRelativePath: inspected.artifactRelativePath,
-      preferredLinkScript: inspected.preferredLinkScript,
+    projectSources.push({
+      ...(source.id ? { id: source.id } : {}),
+      rootPath: inspection.rootPath,
+      projects,
     });
   }
-  return { ...input, shellRootPath, mfeRootPaths, libraries };
+  return { ...input, projectSources };
+}
+
+async function restorePreviouslyActiveProjects(workspaceId, records) {
+  const catalog = catalogs.get(workspaceId);
+  if (!catalog || records.length === 0) return [];
+  const failures = [];
+  for (const record of records) {
+    const project = catalog.projects.find(
+      (candidate) => candidate.id === record.projectId,
+    );
+    if (!project?.defaultScript) continue;
+    try {
+      assertProjectNotActiveInAnotherWorkspace(workspaceId, project);
+      await supervisor.start({
+        workspace: catalog.workspace,
+        project,
+        script:
+          record.script && project.scripts[record.script]
+            ? record.script
+            : project.defaultScript,
+      });
+    } catch (error) {
+      failures.push({
+        projectId: record.projectId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return failures;
 }
 
 function workspaceChangedOperationally(current, input) {
-  const roots = current.mfeRoots.map((root) => root.rootPath);
-  return current.shellRootPath !== input.shellRootPath ||
-    current.environment !== input.environment ||
+  const roots = current.projectSources.map((source) => source.rootPath);
+  return current.environment !== input.environment ||
     JSON.stringify(current.nodePolicy) !== JSON.stringify(input.nodePolicy) ||
-    roots.length !== input.mfeRootPaths.length ||
-    roots.some((root, index) => root !== input.mfeRootPaths[index]);
+    roots.length !== input.projectSources.length ||
+    roots.some((root, index) => root !== input.projectSources[index].rootPath);
 }
 
-function changedLibraryProjectIds(current, input) {
+function removedOrChangedProjectIds(current, input) {
   const nextByRoot = new Map(
-    input.libraries.map((library) => [library.rootPath, library]),
+    input.projectSources.map((source) => [source.rootPath, source]),
   );
-  return (current.libraries ?? []).flatMap((library) => {
-    const next = nextByRoot.get(library.rootPath);
-    const changed = !next ||
-      library.developmentScript !== next.developmentScript ||
-      library.artifactRelativePath !== next.artifactRelativePath ||
-      library.preferredLinkScript !== next.preferredLinkScript;
-    return changed ? [`library:${library.id}`] : [];
+  return current.projectSources.flatMap((source) => {
+    const next = nextByRoot.get(source.rootPath);
+    if (!next) {
+      return source.projects.map((project) =>
+        project.relativePath === '.'
+          ? source.rootProjectId
+          : `${source.id}/${project.relativePath}`
+      );
+    }
+    const nextProjects = new Map(
+      next.projects.map((project) => [project.relativePath, project]),
+    );
+    return source.projects.flatMap((project) => {
+      const candidate = nextProjects.get(project.relativePath);
+      if (candidate && JSON.stringify(candidate) === JSON.stringify(project)) {
+        return [];
+      }
+      return [project.relativePath === '.'
+        ? source.rootProjectId
+        : `${source.id}/${project.relativePath}`];
+    });
   });
 }
 
@@ -406,7 +505,38 @@ function orderedExecutableProjects(catalog) {
   return catalog.projects
     .filter((project) => project.defaultScript && project.role !== 'template')
     .toSorted((left, right) =>
-      (roleOrder.get(left.role) ?? 3) - (roleOrder.get(right.role) ?? 3));
+      (left.startupOrder ?? (roleOrder.get(left.role) ?? 3) * 100) -
+      (right.startupOrder ?? (roleOrder.get(right.role) ?? 3) * 100));
+}
+
+const ACTIVE_PROCESS_STATES = new Set([
+  'starting',
+  'linking',
+  'running',
+  'healthy',
+  'degraded',
+  'stopping',
+]);
+
+function assertProjectNotActiveInAnotherWorkspace(workspaceId, project) {
+  for (const managed of supervisor.snapshot()) {
+    if (
+      managed.workspaceId === workspaceId ||
+      !ACTIVE_PROCESS_STATES.has(managed.status)
+    ) {
+      continue;
+    }
+    const otherCatalog = catalogs.get(managed.workspaceId);
+    const otherProject = otherCatalog?.projects.find(
+      (candidate) => candidate.id === managed.projectId,
+    );
+    if (otherProject?.absolutePath === project.absolutePath) {
+      throw new Error(
+        `"${project.displayName}" já está em execução na workspace ` +
+        `"${otherCatalog?.workspace.name ?? managed.workspaceId}".`,
+      );
+    }
+  }
 }
 
 async function startWorkspace(workspaceId) {
@@ -415,6 +545,7 @@ async function startWorkspace(workspaceId) {
   const failures = [];
   for (const project of orderedExecutableProjects(catalog)) {
     try {
+      assertProjectNotActiveInAnotherWorkspace(workspaceId, project);
       await supervisor.start({
         workspace: catalog.workspace,
         project,
@@ -436,6 +567,52 @@ async function stopWorkspace(workspaceId) {
   await supervisor.stopWorkspace(workspaceId, projectIds);
 }
 
+async function reviewWorkspace(workspaceId) {
+  const workspace = configStore.snapshot.workspaces.find(
+    (item) => item.id === workspaceId,
+  );
+  if (!workspace) throw new Error('Workspace não encontrada.');
+  const catalog = catalogs.get(workspaceId);
+  const currentIds = new Set(catalog?.projects.map((project) => project.id) ?? []);
+  const foundIds = new Set();
+  const sources = [];
+  for (const source of workspace.projectSources) {
+    const inspection = await inspectProjectSource(source.rootPath);
+    const publicInspection = publicSourceInspection(inspection);
+    for (const candidate of publicInspection.projects) {
+      const id = candidate.relativePath === '.'
+        ? source.rootProjectId
+        : `${source.id}/${candidate.relativePath}`;
+      foundIds.add(id);
+      const configured = source.projects.find(
+        (project) => project.relativePath === candidate.relativePath,
+      );
+      if (configured) {
+        candidate.configuredKind = configured.kind;
+        candidate.kindSource = configured.kindSource;
+        candidate.localLibraryLink = configured.localLibraryLink;
+      }
+      candidate.status = configured ? 'existing' : 'new';
+    }
+    sources.push({
+      sourceId: source.id,
+      status: 'existing',
+      ...publicInspection,
+    });
+  }
+  return {
+    workspaceId,
+    sources,
+    missingProjects: (catalog?.projects ?? [])
+      .filter((project) => currentIds.has(project.id) && !foundIds.has(project.id))
+      .map((project) => ({
+        projectId: project.id,
+        name: project.displayName,
+        relativePath: project.relativePath,
+      })),
+  };
+}
+
 function registerIpcHandlers() {
   ipcMain.handle(
     IPC_CHANNELS.getSnapshot,
@@ -446,11 +623,11 @@ function registerIpcHandlers() {
     withValidatedSender(async () => listInstalledNodeVersions()),
   );
   ipcMain.handle(
-    IPC_CHANNELS.chooseShellDirectory,
+    IPC_CHANNELS.chooseProjectDirectory,
     withValidatedSender(async (payload) => {
       const { initialPath } = validateDirectoryPickerRequest(payload);
       const result = await dialog.showOpenDialog(mainWindow, {
-        title: 'Selecionar o projeto shell',
+        title: 'Selecionar projeto, raiz ou monorepo',
         properties: ['openDirectory'],
         ...(initialPath ? { defaultPath: initialPath } : {}),
       });
@@ -458,34 +635,31 @@ function registerIpcHandlers() {
     }),
   );
   ipcMain.handle(
-    IPC_CHANNELS.chooseMfeDirectory,
-    withValidatedSender(async (payload) => {
-      const { initialPath } = validateDirectoryPickerRequest(payload);
-      const result = await dialog.showOpenDialog(mainWindow, {
-        title: 'Selecionar projeto ou raiz de MFEs',
-        properties: ['openDirectory'],
-        ...(initialPath ? { defaultPath: initialPath } : {}),
-      });
-      return result.canceled ? null : result.filePaths[0];
+    IPC_CHANNELS.inspectProjectSource,
+    withValidatedSender(async (payload, event) => {
+      const { rootPath, requestId } =
+        validateProjectSourceInspectionRequest(payload);
+      const sender = event.sender;
+      return publicSourceInspection(
+        await inspectProjectSource(
+          await validateDirectory(rootPath),
+          (progress) => {
+            if (!sender.isDestroyed()) {
+              sender.send(IPC_CHANNELS.projectSourceInspectionProgress, {
+                requestId,
+                ...progress,
+              });
+            }
+          },
+        ),
+      );
     }),
   );
   ipcMain.handle(
-    IPC_CHANNELS.chooseLibraryDirectory,
+    IPC_CHANNELS.reviewWorkspace,
     withValidatedSender(async (payload) => {
-      const { initialPath } = validateDirectoryPickerRequest(payload);
-      const result = await dialog.showOpenDialog(mainWindow, {
-        title: 'Selecionar workspace da biblioteca',
-        properties: ['openDirectory'],
-        ...(initialPath ? { defaultPath: initialPath } : {}),
-      });
-      return result.canceled ? null : result.filePaths[0];
-    }),
-  );
-  ipcMain.handle(
-    IPC_CHANNELS.inspectLibraryDirectory,
-    withValidatedSender(async (payload) => {
-      const { rootPath } = validateLibraryInspectionRequest(payload);
-      return inspectLibraryDirectory(await validateDirectory(rootPath));
+      const { workspaceId } = validateWorkspaceRequest(payload);
+      return reviewWorkspace(workspaceId);
     }),
   );
   ipcMain.handle(
@@ -635,15 +809,33 @@ function registerIpcHandlers() {
       );
       if (!current) throw new Error('Workspace não encontrada.');
       const stopAll = workspaceChangedOperationally(current, input);
+      const changedProjectIds = stopAll
+        ? null
+        : new Set(removedOrChangedProjectIds(current, input));
+      const activeBeforeUpdate = supervisor.snapshot().filter((record) =>
+        record.workspaceId === workspaceId &&
+        ACTIVE_PROCESS_STATES.has(record.status) &&
+        (stopAll || changedProjectIds.has(record.projectId))
+      );
       if (stopAll) {
         await stopWorkspace(workspaceId);
       } else {
-        for (const projectId of changedLibraryProjectIds(current, input)) {
+        for (const projectId of changedProjectIds) {
           await supervisor.stop(workspaceId, projectId);
         }
       }
       await configStore.updateWorkspace(workspaceId, input);
       await refreshWorkspace(workspaceId);
+      const restartFailures = await restorePreviouslyActiveProjects(
+        workspaceId,
+        activeBeforeUpdate,
+      );
+      if (restartFailures.length) {
+        throw new Error(
+          `${restartFailures.length} projeto(s) não puderam ser restaurados: ` +
+          restartFailures.map((failure) => failure.message).join(' | '),
+        );
+      }
       return buildSnapshot();
     }),
   );
@@ -655,15 +847,6 @@ function registerIpcHandlers() {
       await configStore.removeWorkspace(workspaceId);
       catalogs.delete(workspaceId);
       broadcastSnapshot();
-      return buildSnapshot();
-    }),
-  );
-  ipcMain.handle(
-    IPC_CHANNELS.refreshWorkspace,
-    withValidatedSender(async (payload) => {
-      const { workspaceId } = validateWorkspaceRequest(payload);
-      await configStore.restoreExcludedProjects(workspaceId);
-      await refreshWorkspace(workspaceId);
       return buildSnapshot();
     }),
   );
@@ -691,12 +874,42 @@ function registerIpcHandlers() {
     }),
   );
   ipcMain.handle(
+    IPC_CHANNELS.updateProjectOrder,
+    withValidatedSender(async (payload) => {
+      const request = validateProjectOrderUpdate(payload);
+      const catalog = catalogs.get(request.workspaceId);
+      if (!catalog) throw new Error('Workspace não descoberta.');
+      const configurableIds = new Set(
+        catalog.projects
+          .filter((project) => !project.orphaned)
+          .map((project) => project.id),
+      );
+      if (
+        request.projectIds.length !== configurableIds.size ||
+        request.projectIds.some((projectId) => !configurableIds.has(projectId))
+      ) {
+        throw new Error(
+          'A ordenação deve conter exatamente os projetos atuais da workspace.',
+        );
+      }
+      await configStore.updateProjectOrder(
+        request.workspaceId,
+        request.projectIds,
+      );
+      await refreshWorkspace(request.workspaceId);
+      return buildSnapshot();
+    }),
+  );
+  ipcMain.handle(
     IPC_CHANNELS.linkLibraries,
     withValidatedSender(async (payload) => {
       const request = validateLibraryLinkRequest(payload);
       const catalog = catalogs.get(request.workspaceId);
       if (!catalog) throw new Error('Workspace não descoberta.');
       const plan = buildLibraryLinkPlan(catalog, request);
+      for (const project of [...plan.libraries, ...plan.consumers]) {
+        assertProjectNotActiveInAnotherWorkspace(request.workspaceId, project);
+      }
       const isBatch =
         plan.libraries.length > 1 ||
         plan.consumers.length > 1;
@@ -752,10 +965,7 @@ function registerIpcHandlers() {
     IPC_CHANNELS.excludeProject,
     withValidatedSender(async (payload) => {
       const request = validateProjectRequest(payload);
-      const { project } = resolveProject(request.workspaceId, request.projectId);
-      if (project.role !== 'mfe') {
-        throw new Error('Somente micro front-ends podem ser ocultados.');
-      }
+      resolveProject(request.workspaceId, request.projectId);
       await supervisor.stop(request.workspaceId, request.projectId);
       await configStore.excludeProject(request.workspaceId, request.projectId);
       await refreshWorkspace(request.workspaceId);
@@ -770,6 +980,7 @@ function registerIpcHandlers() {
         request.workspaceId,
         request.projectId,
       );
+      assertProjectNotActiveInAnotherWorkspace(request.workspaceId, project);
       await supervisor.start({ workspace, project, script: request.script });
       return buildSnapshot();
     }),
@@ -790,6 +1001,7 @@ function registerIpcHandlers() {
         request.workspaceId,
         request.projectId,
       );
+      assertProjectNotActiveInAnotherWorkspace(request.workspaceId, project);
       const existing = supervisor.snapshot().find(
         (process) =>
           process.workspaceId === request.workspaceId &&
