@@ -117,7 +117,7 @@
               <button class="button button--success" type="button" (click)="confirmDownloadUpdate()">Baixar</button>
             }
             @if (runner.updateState().status === 'downloaded') {
-              <button class="button button--primary" type="button" (click)="confirmInstallUpdate()">Reiniciar e atualizar</button>
+              <button class="button button--primary" type="button" [disabled]="installingUpdate()" (click)="confirmInstallUpdate()">Reiniciar e atualizar</button>
             }
             @if (runner.updateState().status === 'not-available') {
               <button
@@ -621,7 +621,7 @@
                   <button class="button button--success" type="button" (click)="confirmDownloadUpdate()">Baixar atualização</button>
                 }
                 @if (runner.updateState().status === 'downloaded') {
-                  <button class="button button--primary" type="button" (click)="confirmInstallUpdate()">Reiniciar e atualizar</button>
+                  <button class="button button--primary" type="button" [disabled]="installingUpdate()" (click)="confirmInstallUpdate()">Reiniciar e atualizar</button>
                 }
               </div>
               @if (runner.updateState().checkedAt) {
@@ -687,6 +687,28 @@
     </div>
   </main>
 </div>
+
+@if (installingUpdate()) {
+  <div class="app-update-backdrop" aria-hidden="true"></div>
+  <section
+    class="app-update-loading"
+    role="dialog"
+    aria-modal="true"
+    aria-busy="true"
+    aria-labelledby="app-update-title"
+    aria-describedby="app-update-description"
+  >
+    <span class="app-update-spinner" aria-hidden="true"></span>
+    <div>
+      <span class="eyebrow">Aguarde</span>
+      <h2 id="app-update-title">Atualizando...</h2>
+      <p id="app-update-description">
+        O MFE Runner será reiniciado assim que a instalação terminar.
+      </p>
+      <small>Não feche o aplicativo durante esta etapa.</small>
+    </div>
+  </section>
+}
 
 @if (workspaceRemoval(); as removal) {
   <div class="workspace-removal-backdrop" aria-hidden="true"></div>

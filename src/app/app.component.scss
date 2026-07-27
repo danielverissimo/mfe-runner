@@ -607,14 +607,16 @@ main {
 .workspace-card .warning { color: var(--runner-warning); font-size: 10px; }
 .workspace-card footer { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 14px; border-top: 1px solid var(--runner-border-soft); }
 
-.workspace-removal-backdrop {
+.workspace-removal-backdrop,
+.app-update-backdrop {
   position: fixed;
   z-index: 70;
   inset: 0;
   background: rgb(3 7 13 / 76%);
   backdrop-filter: blur(4px);
 }
-.workspace-removal-loading {
+.workspace-removal-loading,
+.app-update-loading {
   position: fixed;
   z-index: 71;
   top: 50%;
@@ -632,10 +634,13 @@ main {
   transform: translate(-50%, -50%);
 }
 .workspace-removal-loading h2,
-.workspace-removal-loading p {
+.workspace-removal-loading p,
+.app-update-loading h2,
+.app-update-loading p {
   margin: 0;
 }
-.workspace-removal-loading h2 {
+.workspace-removal-loading h2,
+.app-update-loading h2 {
   margin-top: 4px;
   font-size: 18px;
 }
@@ -648,27 +653,30 @@ main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.workspace-removal-loading p {
+.workspace-removal-loading p,
+.app-update-loading p {
   margin-top: 13px;
   color: var(--runner-text);
   font-size: 11px;
   line-height: 1.5;
 }
-.workspace-removal-loading small {
+.workspace-removal-loading small,
+.app-update-loading small {
   display: block;
   margin-top: 5px;
   color: var(--runner-text-muted);
   font-size: 10px;
 }
-.workspace-removal-spinner {
+.workspace-removal-spinner,
+.app-update-spinner {
   width: 42px;
   height: 42px;
   border: 4px solid rgb(124 102 255 / 20%);
   border-top-color: #8c7dff;
   border-radius: 50%;
-  animation: workspace-removal-spin .8s linear infinite;
+  animation: blocking-operation-spin .8s linear infinite;
 }
-@keyframes workspace-removal-spin {
+@keyframes blocking-operation-spin {
   to { transform: rotate(360deg); }
 }
 

@@ -529,8 +529,8 @@ export class RunnerApiService {
     );
   }
 
-  async installUpdate(): Promise<void> {
-    await this.runUpdateAction(
+  async installUpdate(): Promise<boolean> {
+    return this.runUpdateAction(
       () => this.getApi().installUpdate(),
       'Não foi possível instalar a atualização.',
     );
@@ -570,14 +570,16 @@ export class RunnerApiService {
   private async runUpdateAction(
     operation: () => Promise<UpdateState>,
     fallbackMessage: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     this.error.set(null);
     try {
       this.updateState.set(await operation());
+      return true;
     } catch (error) {
       this.error.set(
         error instanceof Error ? error.message : fallbackMessage,
       );
+      return false;
     }
   }
 

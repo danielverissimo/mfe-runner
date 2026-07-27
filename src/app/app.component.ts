@@ -137,6 +137,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly processAreaPercent = signal(this.readSplitPreference());
   readonly resizing = signal(false);
   readonly updateNoticeDismissed = signal(false);
+  readonly installingUpdate = signal(false);
   @ViewChild(WorkspaceDialogComponent)
   private workspaceDialog?: WorkspaceDialogComponent;
   private workspaceBounds: DOMRect | null = null;
@@ -906,6 +907,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   async confirmInstallUpdate(): Promise<void> {
+    if (this.installingUpdate()) return;
     const keepProcesses = !this.runner.settings().stopProcessesOnExit;
     const confirmed = window.confirm(
       'Reiniciar o MFE Runner e instalar a atualização agora?\n\n' +
@@ -913,7 +915,11 @@ export class AppComponent implements OnInit, OnDestroy {
         ? 'Os projetos em execução serão mantidos pelo supervisor.'
         : 'Os projetos gerenciados serão encerrados antes da atualização.'),
     );
-    if (confirmed) await this.runner.installUpdate();
+    if (!confirmed) return;
+
+    this.installingUpdate.set(true);
+    const installStarted = await this.runner.installUpdate();
+    if (!installStarted) this.installingUpdate.set(false);
   }
 
   async selectIde(event: Event): Promise<void> {

@@ -647,6 +647,45 @@ describe('AppComponent workspace experience', () => {
     expect(window.runnerApi?.downloadUpdate).toHaveBeenCalled();
   });
 
+  it('shows a centered blocking status while the update is being installed', () => {
+    spyOn(window, 'confirm').and.returnValue(true);
+    const installUpdate = window.runnerApi?.installUpdate as jasmine.Spy;
+    installUpdate.and.returnValue(new Promise<never>(() => undefined));
+
+    void fixture.componentInstance.confirmInstallUpdate();
+    fixture.detectChanges();
+
+    const loading: HTMLElement =
+      fixture.nativeElement.querySelector('.app-update-loading');
+    expect(fixture.componentInstance.installingUpdate()).toBeTrue();
+    expect(loading).not.toBeNull();
+    expect(loading.getAttribute('role')).toBe('dialog');
+    expect(loading.getAttribute('aria-busy')).toBe('true');
+    expect(loading.textContent).toContain('Atualizando...');
+    expect(loading.textContent)
+      .toContain('O MFE Runner será reiniciado assim que a instalação terminar.');
+    expect(getComputedStyle(loading).position).toBe('fixed');
+    expect(fixture.nativeElement.querySelector('.app-update-backdrop'))
+      .not.toBeNull();
+  });
+
+  it('removes the update loading status when installation cannot start', async () => {
+    spyOn(window, 'confirm').and.returnValue(true);
+    const installUpdate = window.runnerApi?.installUpdate as jasmine.Spy;
+    installUpdate.and.returnValue(
+      Promise.reject(new Error('Falha ao iniciar a atualização.')),
+    );
+
+    await fixture.componentInstance.confirmInstallUpdate();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.installingUpdate()).toBeFalse();
+    expect(fixture.nativeElement.querySelector('.app-update-loading'))
+      .toBeNull();
+    expect(fixture.componentInstance.runner.error())
+      .toBe('Falha ao iniciar a atualização.');
+  });
+
   it('shows progress and the result of a user-initiated update check', () => {
     const updateState = fixture.componentInstance.runner.updateState;
     updateState.set({
