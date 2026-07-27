@@ -41,8 +41,9 @@
         <label class="language-picker">
           <span>Idioma</span>
           <select
-            [value]="i18n.language()"
-            (change)="changeLanguage($event)"
+            [ngModel]="i18n.language()"
+            (ngModelChange)="changeLanguage($event)"
+            [ngModelOptions]="{ standalone: true }"
             aria-label="Idioma"
           >
             @for (language of i18n.options; track language.code) {
@@ -421,8 +422,35 @@
                 <small>Última consulta: {{ runner.updateState().checkedAt | date:'dd/MM/yyyy HH:mm:ss' }}</small>
               }
             </article>
-            <article class="settings-card"><h3>Limite de logs</h3><strong>{{ runner.settings().logLimit }} linhas</strong><p>Buffer em memória por processo.</p></article>
-            <article class="settings-card"><h3>Fronteira de escrita</h3><p>Os projetos gerenciados permanecem somente leitura.</p></article>
+            <article class="settings-card settings-card--wide log-limit-settings">
+              <h3>Limite de logs</h3>
+              <p>Defina quantas linhas serão mantidas no buffer em memória de cada processo.</p>
+              <label for="log-limit">Quantidade de linhas por processo</label>
+              <div class="log-limit-settings__controls">
+                <input
+                  #logLimitInput
+                  id="log-limit"
+                  type="number"
+                  min="200"
+                  max="10000"
+                  step="100"
+                  [value]="logLimitDraft()"
+                  (input)="logLimitDraft.set(logLimitInput.value)"
+                  (keydown.enter)="saveLogLimit()"
+                />
+                <button
+                  class="button button--primary"
+                  type="button"
+                  [disabled]="
+                    runner.loading() ||
+                    !isValidLogLimit(logLimitDraft()) ||
+                    logLimitDraft() === runner.settings().logLimit.toString()
+                  "
+                  (click)="saveLogLimit()"
+                >Salvar limite</button>
+              </div>
+              <small>Entre 200 e 10.000 linhas.</small>
+            </article>
             <article class="settings-card settings-card--wide">
               <h3>IDE para projetos</h3>
               <p>O Runner abre somente executáveis detectados ou escolhidos localmente, sem comandos livres.</p>

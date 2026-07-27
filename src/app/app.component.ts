@@ -111,6 +111,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly projectVisibility = signal<ProjectVisibility>('all');
   readonly projectNameFilter = signal('');
   readonly globalVersionDraft = signal('');
+  readonly logLimitDraft = signal('');
   readonly processAreaPercent = signal(this.readSplitPreference());
   readonly resizing = signal(false);
   readonly updateNoticeDismissed = signal(false);
@@ -118,6 +119,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private workspaceDialog?: WorkspaceDialogComponent;
   private workspaceBounds: DOMRect | null = null;
   private updateNoticeTimer?: ReturnType<typeof setTimeout>;
+  private syncedLogLimit?: number;
 
   readonly navigation: {
     id: Section;
@@ -247,6 +249,14 @@ export class AppComponent implements OnInit, OnDestroy {
       if (globalPolicy.version && !this.globalVersionDraft()) {
         this.globalVersionDraft.set(globalPolicy.version);
       }
+      const logLimit = this.runner.settings().logLimit;
+      if (
+        this.syncedLogLimit === undefined ||
+        this.logLimitDraft() === String(this.syncedLogLimit)
+      ) {
+        this.logLimitDraft.set(String(logLimit));
+      }
+      this.syncedLogLimit = logLimit;
     });
     effect(() => {
       const update = this.runner.updateState();
@@ -307,10 +317,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.selectedLogWorkspaceId.set(undefined);
   }
 
-  changeLanguage(event: Event): void {
-    this.i18n.setLanguage(
-      (event.target as HTMLSelectElement).value as AppLanguage,
-    );
+  changeLanguage(language: AppLanguage): void {
+    this.i18n.setLanguage(language);
   }
 
   openWorkspaceDialog(workspace: WorkspaceConfig | null = null): void {
@@ -493,6 +501,20 @@ export class AppComponent implements OnInit, OnDestroy {
       value === 'stop'
         ? 'Ao fechar, o Runner encerrará todos os processos gerenciados.'
         : 'Os processos continuarão executando quando a interface for fechada.',
+    );
+  }
+
+  isValidLogLimit(value: string): boolean {
+    const logLimit = Number(value);
+    return Number.isInteger(logLimit) && logLimit >= 200 && logLimit <= 10000;
+  }
+
+  async saveLogLimit(): Promise<void> {
+    const value = this.logLimitDraft();
+    if (!this.isValidLogLimit(value)) return;
+    await this.runner.updateSettings(
+      { logLimit: Number(value) },
+      'Limite de logs atualizado.',
     );
   }
 

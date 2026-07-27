@@ -579,7 +579,8 @@ main {
 .settings-card h3, .settings-card p { margin: 0; }
 .settings-card h3 { font-size: 14px; }
 .settings-card p { color: var(--runner-text-muted); font-size: 11px; line-height: 1.5; }
-.settings-card select {
+.settings-card select,
+.settings-card input {
   height: 38px;
   padding: 0 10px;
   border: 1px solid var(--runner-border);
@@ -590,6 +591,23 @@ main {
 .settings-card--wide { grid-column: 1 / -1; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-card > small { color: #69758a; font-size: 10px; }
+.log-limit-settings {
+  min-height: 0;
+}
+.log-limit-settings > label {
+  color: var(--runner-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.log-limit-settings__controls {
+  display: grid;
+  grid-template-columns: minmax(160px, 320px) max-content;
+  gap: 10px;
+  align-items: center;
+}
+.log-limit-settings__controls input {
+  width: 100%;
+}
 .update-settings__status {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);

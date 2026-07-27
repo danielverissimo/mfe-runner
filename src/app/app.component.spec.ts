@@ -35,6 +35,17 @@ describe('AppComponent workspace experience', () => {
     expect(document.documentElement.lang).toBe('en');
   });
 
+  it('keeps the selector synchronized with the effective language', async () => {
+    fixture.componentInstance.i18n.setLanguage('es');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const selector: HTMLSelectElement =
+      fixture.nativeElement.querySelector('.language-picker select');
+    expect(selector.value).toBe('es');
+    expect(selector.selectedOptions[0].textContent?.trim()).toBe('Español');
+  });
+
   it('opens directly on Projects without legacy navigation', () => {
     expect(fixture.componentInstance.section()).toBe('projects');
     const text = fixture.nativeElement.textContent;
@@ -247,6 +258,54 @@ describe('AppComponent workspace experience', () => {
       .toContain('continuarão executando');
   });
 
+  it('configures the process log limit and removes the write-boundary card', async () => {
+    fixture.componentInstance.selectSection('settings');
+    fixture.detectChanges();
+    const updateSettings = window.runnerApi?.updateSettings as jasmine.Spy;
+    updateSettings.calls.reset();
+    const input: HTMLInputElement =
+      fixture.nativeElement.querySelector('#log-limit');
+    const save: HTMLButtonElement = [...fixture.nativeElement.querySelectorAll(
+      'button',
+    )].find((button: HTMLButtonElement) =>
+      button.textContent?.includes('Salvar limite')
+    ) as HTMLButtonElement;
+
+    input.value = '3200';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    save.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(updateSettings).toHaveBeenCalledOnceWith({ logLimit: 3200 });
+    expect(fixture.componentInstance.runner.notice())
+      .toBe('Limite de logs atualizado.');
+    expect(fixture.nativeElement.textContent)
+      .not.toContain('Fronteira de escrita');
+  });
+
+  it('rejects a log limit outside the supported range', () => {
+    fixture.componentInstance.selectSection('settings');
+    fixture.detectChanges();
+    const updateSettings = window.runnerApi?.updateSettings as jasmine.Spy;
+    updateSettings.calls.reset();
+    const input: HTMLInputElement =
+      fixture.nativeElement.querySelector('#log-limit');
+    const save: HTMLButtonElement = [...fixture.nativeElement.querySelectorAll(
+      'button',
+    )].find((button: HTMLButtonElement) =>
+      button.textContent?.includes('Salvar limite')
+    ) as HTMLButtonElement;
+
+    input.value = '100';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(save.disabled).toBeTrue();
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
   it('provides a dedicated Workspaces management screen', () => {
     fixture.componentInstance.selectSection('workspaces');
     fixture.detectChanges();
@@ -409,5 +468,31 @@ describe('AppComponent workspace experience', () => {
     expect(card.textContent).toContain('Atualizações do MFE Runner');
     expect(card.textContent).toContain('Versão instalada');
     expect(card.textContent).toContain('Buscar atualizações');
+  });
+});
+
+describe('AppComponent persisted language', () => {
+  let fixture: ComponentFixture<AppComponent>;
+
+  beforeEach(async () => {
+    localStorage.setItem('mfe-runner.language', 'es');
+    window.runnerApi = createBridgeFixture();
+    await TestBed.configureTestingModule({ imports: [AppComponent] })
+      .compileComponents();
+    fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  });
+
+  afterEach(() => delete window.runnerApi);
+
+  it('selects the language loaded from persisted settings on startup', () => {
+    const selector: HTMLSelectElement =
+      fixture.nativeElement.querySelector('.language-picker select');
+
+    expect(fixture.componentInstance.i18n.language()).toBe('es');
+    expect(selector.value).toBe('es');
+    expect(selector.selectedOptions[0].textContent?.trim()).toBe('Español');
   });
 });
