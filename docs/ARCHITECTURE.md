@@ -18,7 +18,7 @@ payloads.
 
 ## Configuration
 
-The private configuration uses schema version 5 and is stored in Electron's
+The private configuration uses schema version 6 and is stored in Electron's
 per-user application data directory.
 
 Each workspace contains:
@@ -27,26 +27,37 @@ Each workspace contains:
 - reviewed project classifications and overrides;
 - optional local-library link configuration;
 - `projectOrder` for the saved visual catalog order;
-- environment and Node.js policy;
-- per-project script, runtime, order, and exclusion settings.
+- environment and generic execution policies;
+- per-project command, runtime/tool, health, order, and exclusion settings.
 
 A root project uses the source ID as its project ID. Nested projects use
 `<sourceId>/<relativePath>`. These IDs allow settings and visual positions to
 survive path rescans and source reordering.
 
-Version 4 configurations are backed up before migration. Previous shell, MFE
-root, and library entries become unified project sources.
+Earlier configurations are backed up before migration. Node policies become
+the Node runtime component in `executionPolicies`; saved scripts become stable
+command IDs where possible. Workspace sources, classifications, ordering,
+exclusions, and local Node library links are preserved.
 
 ## Discovery
 
-Discovery is detector-based. `PackageJsonProjectDetector` is the first
-implementation and normalizes any package with `package.json` into a common
-candidate model.
+Discovery is detector/adaptor based. Each `ProjectDetector` normalizes its
+ecosystem into the same project candidate model. The initial registry contains
+Node.js (stable) and Beta adapters for Java/Maven, Java/Gradle, .NET, Python,
+Rust, and Go.
 
 Angular, federation, manifest, and `ng-package` files provide optional evidence
 for type and capability suggestions. They do not restrict execution. New
 detectors can support other ecosystems without changing the workspace model or
-project catalog contracts.
+project catalog contracts. Maven XML and TOML files are parsed with fixed-size
+limits. Gradle recognition is intentionally static and conservative.
+
+Each adapter provides structured `CommandProfile` entries and runtime
+requirements. `RuntimeResolution` combines project, workspace, and global
+policies independently for runtimes and tools, then produces a compatibility
+state. Explicit unavailable choices are not replaced. Discovery never invokes
+wrappers, build tools, project scripts, network access, or dependency
+resolution.
 
 Configured source roots are bounded, duplicate paths are rejected, and
 overlapping results are deduplicated by canonical project path. Generated,
@@ -54,14 +65,21 @@ dependency, and VCS directories are skipped.
 
 ## Process supervision
 
-The supervisor protocol uses an authenticated local Unix socket on macOS/Linux
+Supervisor protocol v2 uses an authenticated local Unix socket on macOS/Linux
 or a named pipe on Windows. A private random token is required before methods
 or events are accepted.
 
-Processes are identified by workspace ID, project ID, PID/group, script, and
-start time. Port occupancy alone never grants ownership. Commands use argument
-arrays with `shell: false` and must resolve to scripts declared by the
-authoritative project catalog.
+Processes are identified by workspace ID, project ID, PID/group, command ID,
+and start time. Port occupancy alone never grants ownership. The main process
+reconstructs an adapter-owned `LaunchSpecification` containing executable,
+argument array, working directory, sanitized environment, port, and health
+check. The supervisor is ecosystem-independent and never receives free-form
+renderer commands. Windows wrapper launch is handled by a controlled internal
+launcher; normal child execution remains `shell: false`.
+
+The v1→v2 transition stops the obsolete daemon when possible and removes only
+its scoped socket/pipe, lock, token, and state. Old process/log state may be
+discarded, while private workspace configuration is migrated separately.
 
 When configured to keep processes running, closing Electron disconnects the
 client while the supervisor remains active. It becomes eligible to exit only

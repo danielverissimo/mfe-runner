@@ -1,6 +1,6 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { resolveNodeRuntime } from './node-resolver.mjs';
+import { resolveEcosystemRuntime } from './runtime-resolver.mjs';
 import { enrichProjectsWithGit } from './git-context.mjs';
 import { enrichProjectsWithLibraryLinks } from './library-inspector.mjs';
 import { inspectProjectSource } from './project-detectors.mjs';
@@ -169,7 +169,7 @@ function orderProjects(projects, projectOrder = []) {
   );
 }
 
-export async function discoverWorkspace(workspace, globalNodePolicy) {
+export async function discoverWorkspace(workspace, globalExecutionPolicies = {}) {
   const warnings = [];
   const discoveredPaths = new Set();
   const preliminary = [];
@@ -193,27 +193,54 @@ export async function discoverWorkspace(workspace, globalNodePolicy) {
       const capabilities = [...candidate.capabilities];
       const role = roleFor(kindConfig.kind, capabilities);
       const scripts = candidate.scripts ?? {};
-      const defaultScript = selectDefaultScript(
+      const legacyDefaultScript = selectDefaultScript(
         kindConfig.kind,
         scripts,
         override.defaultScript ??
           kindConfig.localLibraryLink?.developmentScript,
       );
-      const node = await resolveNodeRuntime({
-        projectPath: canonicalPath,
-        workspaceRoot: inspection.rootPath,
-        projectPolicy: override.nodePolicy,
-        workspacePolicy: workspace.nodePolicy,
-        globalPolicy: globalNodePolicy,
+      const commands = candidate.commands ?? [];
+      const defaultCommandId =
+        override.defaultCommandId ??
+        (override.defaultScript
+          ? commands.find((item) => item.task === override.defaultScript)?.id
+          : null) ??
+        candidate.defaultCommandId ??
+        (legacyDefaultScript ? `node:script:${legacyDefaultScript}` : null);
+      const runtimeProject = {
+        ...candidate,
+        absolutePath: canonicalPath,
+        sourceRoot: inspection.rootPath,
+      };
+      const legacyGlobalNodePolicy =
+        globalExecutionPolicies?.mode
+          ? globalExecutionPolicies
+          : globalExecutionPolicies?.node?.runtime;
+      const runtime = await resolveEcosystemRuntime({
+        project: runtimeProject,
+        projectPolicies: override.executionPolicies,
+        workspacePolicies: workspace.executionPolicies,
+        globalPolicies: globalExecutionPolicies?.mode
+          ? {}
+          : globalExecutionPolicies,
+        legacyNodePolicies: {
+          projectPolicy: override.nodePolicy,
+          workspacePolicy: workspace.nodePolicy,
+          globalPolicy: legacyGlobalNodePolicy,
+        },
       });
       preliminary.push({
         id,
         sourceId: source.id,
+        sourceRoot: inspection.rootPath,
         name: candidate.name,
         displayName: candidate.name,
         relativePath: candidate.relativePath,
         absolutePath: canonicalPath,
         role,
+        ecosystem: candidate.ecosystem ?? 'node',
+        technology: candidate.technology ?? 'Node.js',
+        supportLevel: candidate.supportLevel ?? 'stable',
         kind: kindConfig.kind,
         kindSource: kindConfig.kindSource,
         capabilities,
@@ -221,23 +248,48 @@ export async function discoverWorkspace(workspace, globalNodePolicy) {
           (kindConfig.kind === 'library' ? 100 : capabilities.includes('host') ? 900 : 500),
         scripts,
         scriptNames: Object.keys(scripts),
-        defaultScript,
+        commands,
+        commandIds: commands.map((item) => item.id),
+        defaultCommandId,
+        defaultScript:
+          commands.find((item) => item.id === defaultCommandId)?.task ??
+          legacyDefaultScript,
         port:
-          findPortInScript(scripts[defaultScript]) ??
+          findPortInScript(
+            scripts[
+              commands.find((item) => item.id === defaultCommandId)?.task ??
+              legacyDefaultScript
+            ],
+          ) ??
           findPortInAngularConfig(candidate.angularConfig),
+        healthCheck: override.healthCheck ?? null,
         federation: candidate.federation
           ? { name: candidate.federation.name, exposes: candidate.federation.exposes }
           : null,
-        packageEngines: candidate.packageJson.engines ?? {},
+        packageEngines: candidate.packageJson?.engines ?? {},
+        runtimeRequirements: candidate.runtimeRequirements ?? {},
+        toolMetadata: candidate.toolMetadata ?? {},
         registrations: [],
-        node,
+        runtime,
+        node: runtime.legacyNode ?? {
+          available: runtime.available,
+          version: runtime.components?.runtime?.version ?? null,
+          source: runtime.components?.runtime?.source ?? 'path',
+          reason: runtime.reason ?? undefined,
+        },
         library: await libraryMetadata(candidate, source, id, kindConfig),
         libraryLinkScriptOverrides: override.libraryLinkScripts ?? {},
         libraryLinks: [],
-        warnings: candidate.suggestedKind === null &&
+        warnings: [
+          ...(candidate.supportLevel === 'beta'
+            ? [`${candidate.technology} está em suporte Beta.`]
+            : []),
+          ...(candidate.suggestedKind === null &&
           !source.projects?.some((item) => item.relativePath === candidate.relativePath)
-          ? ['Classificação assumida como Projeto; revise a workspace.']
-          : [],
+            ? ['Classificação assumida como Projeto; revise a workspace.']
+            : []),
+          ...(!runtime.available && runtime.reason ? [runtime.reason] : []),
+        ],
       });
     }
   }
@@ -276,6 +328,14 @@ export async function discoverWorkspace(workspace, globalNodePolicy) {
       remoteCount: manifest.microFrontends.length,
     })),
     warnings,
+    betaEcosystems: [...new Map(
+      projects
+        .filter((project) => project.supportLevel === 'beta')
+        .map((project) => [project.ecosystem, {
+          ecosystem: project.ecosystem,
+          technology: project.technology,
+        }]),
+    ).values()],
     discoveredAt: new Date().toISOString(),
     gitUpdatedAt: new Date().toISOString(),
   };

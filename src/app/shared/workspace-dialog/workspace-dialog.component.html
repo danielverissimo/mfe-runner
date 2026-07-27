@@ -11,6 +11,46 @@
       </div>
     </header>
 
+    <section class="discovery-guide" aria-labelledby="workspace-discovery-guide-title">
+      <div class="discovery-guide__heading">
+        <span aria-hidden="true">⌕</span>
+        <div>
+          <h3 id="workspace-discovery-guide-title">O que você pode adicionar</h3>
+          <p>Selecione uma pasta; o Runner identifica como ela está organizada e apresenta os projetos encontrados para revisão.</p>
+        </div>
+      </div>
+
+      <div class="discovery-guide__types">
+        <article>
+          <span class="discovery-guide__type-icon" aria-hidden="true">▣</span>
+          <div>
+            <strong>Projeto exato</strong>
+            <small>Uma pasta que representa uma única aplicação, serviço ou biblioteca.</small>
+          </div>
+        </article>
+        <article>
+          <span class="discovery-guide__type-icon" aria-hidden="true">⌗</span>
+          <div>
+            <strong>Raiz com vários projetos</strong>
+            <small>Uma pasta que contém vários projetos em diretórios internos.</small>
+          </div>
+        </article>
+        <article>
+          <span class="discovery-guide__type-icon" aria-hidden="true">◇</span>
+          <div>
+            <strong>Monorepo</strong>
+            <small>Uma raiz que contém um projeto principal e outros projetos internos.</small>
+          </div>
+        </article>
+      </div>
+
+      <div class="discovery-guide__analysis">
+        <strong>Como a análise funciona</strong>
+        <p>O Runner lê somente metadados reconhecidos, ignora dependências, builds e arquivos de controle de versão, identifica a tecnologia e sugere Projeto ou Biblioteca.</p>
+        <p>Você revisa todas as sugestões antes de salvar. A análise não executa builds ou scripts, não acessa a rede e não altera os arquivos dos projetos.</p>
+      </div>
+    </section>
+
     <form (ngSubmit)="submit()">
       <label>
         Nome
@@ -119,6 +159,10 @@
                       <strong>{{ project.name }}</strong>
                       <small>{{ project.relativePath }} · {{ project.technology }}</small>
                       <div class="badges">
+                        <span>{{ project.technology }}</span>
+                        @if (project.supportLevel === 'beta') {
+                          <span class="badge--beta">Beta</span>
+                        }
                         @if (reviewMode) {
                           <span [class.badge--new]="project.status === 'new'">
                             {{ project.status === 'new' ? 'Novo projeto' : 'Projeto existente' }}
@@ -216,24 +260,81 @@
             <option value="prod">Produção</option>
           </select>
         </label>
-        <label>
-          Política de Node
-          <select name="nodeMode" [(ngModel)]="nodeMode">
-            <option value="inherit">Herdar global</option>
-            <option value="auto">Detectar .nvmrc</option>
-            <option value="explicit">Versão específica</option>
-          </select>
-        </label>
       </div>
-      @if (nodeMode === 'explicit') {
-        <app-node-version-picker
-          [catalog]="nodeVersions"
-          [loading]="nodeVersionsLoading"
-          [value]="nodeVersion"
-          label="Versão do Node da workspace"
-          (valueChange)="nodeVersion = $event"
-          (refresh)="refreshNodeVersions.emit()"
-        />
+      @if (detectedEcosystems().length) {
+        <section class="workspace-runtimes">
+          <div>
+            <strong>Runtimes e ferramentas da workspace</strong>
+            <small>Somente os ecossistemas encontrados são exibidos.</small>
+          </div>
+          @for (ecosystem of detectedEcosystems(); track ecosystem) {
+            <details [open]="ecosystem === 'node' || ecosystem.startsWith('java-')">
+              <summary>
+                {{ ecosystemLabel(ecosystem) }}
+                @if (ecosystem !== 'node') {
+                  <span>Beta</span>
+                }
+              </summary>
+              <label>
+                Runtime
+                <select
+                  [name]="'workspace-runtime-' + ecosystem"
+                  [ngModel]="policyMode(ecosystem, 'runtime')"
+                  (ngModelChange)="setPolicyMode(ecosystem, 'runtime', $event)"
+                >
+                  <option value="inherit">Herdar configuração global</option>
+                  <option value="auto">Detectar automaticamente por projeto</option>
+                  <option value="explicit">Usar instalação específica</option>
+                </select>
+              </label>
+              @if (policyMode(ecosystem, 'runtime') === 'explicit') {
+                @if (ecosystem === 'node') {
+                  <app-node-version-picker
+                    [catalog]="nodeVersions"
+                    [loading]="nodeVersionsLoading"
+                    [value]="nodeVersion"
+                    label="Versão do Node da workspace"
+                    (valueChange)="nodeVersion = $event"
+                    (refresh)="refreshNodeVersions.emit()"
+                  />
+                } @else {
+                  <label>
+                    Executável ou diretório home
+                    <input
+                      [name]="'workspace-runtime-path-' + ecosystem"
+                      [ngModel]="policyPath(ecosystem, 'runtime')"
+                      (ngModelChange)="setPolicyPath(ecosystem, 'runtime', $event)"
+                    />
+                  </label>
+                }
+              }
+              @if (ecosystem === 'java-maven' || ecosystem === 'java-gradle') {
+                <label>
+                  {{ ecosystem === 'java-maven' ? 'Maven' : 'Gradle' }}
+                  <select
+                    [name]="'workspace-tool-' + ecosystem"
+                    [ngModel]="policyMode(ecosystem, 'tool')"
+                    (ngModelChange)="setPolicyMode(ecosystem, 'tool', $event)"
+                  >
+                    <option value="inherit">Herdar configuração global</option>
+                    <option value="auto">Wrapper ou instalação detectada</option>
+                    <option value="explicit">Executável específico</option>
+                  </select>
+                </label>
+                @if (policyMode(ecosystem, 'tool') === 'explicit') {
+                  <label>
+                    Path da ferramenta
+                    <input
+                      [name]="'workspace-tool-path-' + ecosystem"
+                      [ngModel]="policyPath(ecosystem, 'tool')"
+                      (ngModelChange)="setPolicyPath(ecosystem, 'tool', $event)"
+                    />
+                  </label>
+                }
+              }
+            </details>
+          }
+        </section>
       }
       <footer>
         <button class="button button--ghost" type="button" (click)="dismiss.emit()">Cancelar</button>

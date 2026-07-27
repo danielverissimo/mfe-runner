@@ -59,7 +59,7 @@ export class ProcessTableComponent {
     projectId?: string;
   }>();
 
-  private readonly selectedScripts = new Map<string, string>();
+  private readonly selectedCommands = new Map<string, string>();
   toolsProjectId: string | null = null;
   libraryProjectId: string | null = null;
 
@@ -78,7 +78,9 @@ export class ProcessTableComponent {
   }
 
   selectedScript(project: DiscoveredProject): string {
-    const selected = this.selectedScripts.get(this.scriptSelectionKey(project.id));
+    const command = this.selectedCommand(project);
+    if (command) return command.task;
+    const selected = this.selectedCommands.get(this.scriptSelectionKey(project.id));
     if (selected && project.scriptNames.includes(selected)) {
       return selected;
     }
@@ -86,8 +88,23 @@ export class ProcessTableComponent {
     return project.defaultScript ?? project.scriptNames[0] ?? '';
   }
 
+  selectedCommand(project: DiscoveredProject) {
+    const selected = this.selectedCommands.get(
+      this.scriptSelectionKey(project.id),
+    );
+    return project.commands.find((command) => command.id === selected) ??
+      project.commands.find(
+        (command) => command.id === project.defaultCommandId,
+      ) ??
+      project.commands[0];
+  }
+
+  selectedCommandId(project: DiscoveredProject): string {
+    return this.selectedCommand(project)?.id ?? this.selectedScript(project);
+  }
+
   setScript(projectId: string, event: Event): void {
-    this.selectedScripts.set(
+    this.selectedCommands.set(
       this.scriptSelectionKey(projectId),
       (event.target as HTMLSelectElement).value,
     );
@@ -97,6 +114,7 @@ export class ProcessTableComponent {
     this.startProject.emit({
       workspaceId: this.workspaceId,
       projectId: project.id,
+      commandId: this.selectedCommand(project)?.id,
       script: this.selectedScript(project),
     });
   }
@@ -133,6 +151,20 @@ export class ProcessTableComponent {
       application: 'Projeto',
       template: 'Projeto',
     }[role] ?? role;
+  }
+
+  runtimeLabel(project: DiscoveredProject): string {
+    const runtime = project.runtime.components.runtime;
+    if (!runtime) return 'Indisponível';
+    return runtime.version ? `v${runtime.version}` : 'PATH';
+  }
+
+  runtimeSource(project: DiscoveredProject): string {
+    const runtime = project.runtime.components.runtime;
+    if (project.ecosystem === 'node' && project.node.source === 'nvmrc') {
+      return '.nvmrc';
+    }
+    return runtime?.source ?? project.runtime.compatibility;
   }
 
   uptime(process?: ManagedProcess): string {

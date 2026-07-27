@@ -9,10 +9,13 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
   DiscoveredProject,
+  AppTheme,
+  Ecosystem,
+  ExecutionPolicies,
   IdePreference,
   NodePolicyMode,
   ProcessStatus,
@@ -56,6 +59,14 @@ interface WorkspaceRemovalContext {
 }
 
 type ProjectVisibility = 'all' | 'running';
+type PolicyComponent = 'runtime' | 'tool' | 'packageManager';
+
+interface EcosystemSettingsCard {
+  ecosystem: Ecosystem;
+  label: string;
+  supportLevel: 'stable' | 'beta';
+  components: Array<{ id: PolicyComponent; label: string }>;
+}
 
 const ACTIVE_PROCESS_STATUSES = new Set<ProcessStatus>([
   'starting',
@@ -104,6 +115,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   readonly runner = inject(RunnerApiService);
   readonly i18n = inject(I18nService);
+  private readonly document = inject(DOCUMENT);
   readonly section = signal<Section>('projects');
   readonly sectionBeforeLogs = signal<Section>('projects');
   readonly selectedWorkspaceId = signal<string | null>(null);
@@ -118,6 +130,9 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly projectVisibility = signal<ProjectVisibility>('all');
   readonly projectNameFilter = signal('');
   readonly globalVersionDraft = signal('');
+  readonly globalPolicyPathDrafts = signal<Record<string, string>>({});
+  readonly pendingExplicitPolicies = signal<Record<string, true>>({});
+  readonly effectiveTheme = signal<'light' | 'dark'>('dark');
   readonly logLimitDraft = signal('');
   readonly processAreaPercent = signal(this.readSplitPreference());
   readonly resizing = signal(false);
@@ -127,6 +142,10 @@ export class AppComponent implements OnInit, OnDestroy {
   private workspaceBounds: DOMRect | null = null;
   private updateNoticeTimer?: ReturnType<typeof setTimeout>;
   private syncedLogLimit?: number;
+  private systemThemeQuery?: MediaQueryList;
+  private readonly systemThemeChange = (): void => {
+    if (this.runner.settings().theme === 'system') this.applyTheme('system');
+  };
 
   readonly navigation: {
     id: Section;
@@ -137,6 +156,59 @@ export class AppComponent implements OnInit, OnDestroy {
     { id: 'workspaces', label: 'Workspaces', icon: 'diamond' },
     { id: 'logs', label: 'Logs', icon: 'list' },
     { id: 'settings', label: 'Configurações', icon: 'settings' },
+  ];
+  readonly ecosystemSettings: EcosystemSettingsCard[] = [
+    {
+      ecosystem: 'node',
+      label: 'Node.js',
+      supportLevel: 'stable',
+      components: [
+        { id: 'runtime', label: 'Node.js' },
+        { id: 'packageManager', label: 'npm, pnpm ou Yarn' },
+      ],
+    },
+    {
+      ecosystem: 'java-maven',
+      label: 'Java / Maven',
+      supportLevel: 'beta',
+      components: [
+        { id: 'runtime', label: 'JDK' },
+        { id: 'tool', label: 'Maven' },
+      ],
+    },
+    {
+      ecosystem: 'java-gradle',
+      label: 'Java / Gradle',
+      supportLevel: 'beta',
+      components: [
+        { id: 'runtime', label: 'JDK' },
+        { id: 'tool', label: 'Gradle' },
+      ],
+    },
+    {
+      ecosystem: 'dotnet',
+      label: '.NET',
+      supportLevel: 'beta',
+      components: [{ id: 'runtime', label: '.NET SDK' }],
+    },
+    {
+      ecosystem: 'python',
+      label: 'Python',
+      supportLevel: 'beta',
+      components: [{ id: 'runtime', label: 'Python / ambiente virtual' }],
+    },
+    {
+      ecosystem: 'rust',
+      label: 'Rust',
+      supportLevel: 'beta',
+      components: [{ id: 'runtime', label: 'Rust / Cargo' }],
+    },
+    {
+      ecosystem: 'go',
+      label: 'Go',
+      supportLevel: 'beta',
+      components: [{ id: 'runtime', label: 'Go toolchain' }],
+    },
   ];
 
   readonly selectedCatalog = computed(() => {
@@ -256,6 +328,20 @@ export class AppComponent implements OnInit, OnDestroy {
       if (globalPolicy.version && !this.globalVersionDraft()) {
         this.globalVersionDraft.set(globalPolicy.version);
       }
+      const drafts = { ...this.globalPolicyPathDrafts() };
+      let draftsChanged = false;
+      for (const [ecosystem, components] of Object.entries(
+        this.runner.settings().executionPolicies,
+      )) {
+        for (const [component, policy] of Object.entries(components ?? {})) {
+          const key = `${ecosystem}:${component}`;
+          if (policy?.path && !drafts[key]) {
+            drafts[key] = policy.path;
+            draftsChanged = true;
+          }
+        }
+      }
+      if (draftsChanged) this.globalPolicyPathDrafts.set(drafts);
       const logLimit = this.runner.settings().logLimit;
       if (
         this.syncedLogLimit === undefined ||
@@ -264,6 +350,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.logLimitDraft.set(String(logLimit));
       }
       this.syncedLogLimit = logLimit;
+      this.applyTheme(this.runner.settings().theme);
     });
     effect(() => {
       const update = this.runner.updateState();
@@ -281,11 +368,17 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
+    this.systemThemeQuery = this.document.defaultView?.matchMedia(
+      '(prefers-color-scheme: dark)',
+    );
+    this.systemThemeQuery?.addEventListener('change', this.systemThemeChange);
+    this.applyTheme(this.runner.settings().theme);
     await this.runner.initialize();
   }
 
   ngOnDestroy(): void {
     this.clearUpdateNoticeTimer();
+    this.systemThemeQuery?.removeEventListener('change', this.systemThemeChange);
     this.runner.destroy();
   }
 
@@ -307,6 +400,17 @@ export class AppComponent implements OnInit, OnDestroy {
       this.sectionBeforeLogs.set(this.section());
     }
     this.section.set(section);
+    if (section === 'settings' && previous !== 'settings') {
+      for (const card of this.ecosystemSettings) {
+        for (const component of card.components) {
+          if (card.ecosystem === 'node' && component.id === 'runtime') continue;
+          void this.runner.refreshRuntimeInstallations(
+            card.ecosystem,
+            component.id,
+          );
+        }
+      }
+    }
     if (section === 'projects' && previous !== 'projects') {
       const workspaceId = this.currentWorkspaceId();
       if (workspaceId) void this.runner.refreshWorkspaceGit(workspaceId);
@@ -502,6 +606,12 @@ export class AppComponent implements OnInit, OnDestroy {
     if (catalog && project) this.projectDialogContext.set({ catalog, project });
   }
 
+  betaTechnologyNames(catalog: WorkspaceCatalog): string {
+    return catalog.betaEcosystems
+      .map((item) => item.technology)
+      .join(', ');
+  }
+
   closeProjectSettings(): void {
     this.projectDialogContext.set(null);
   }
@@ -516,6 +626,9 @@ export class AppComponent implements OnInit, OnDestroy {
       change.defaultScript,
       change.libraryLinkScripts,
       change.startupOrder,
+      change.executionPolicies,
+      change.defaultCommandId,
+      change.healthCheck,
     );
     if (!this.runner.error()) this.closeProjectSettings();
   }
@@ -568,6 +681,168 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
+  globalExecutionPolicy(
+    ecosystem: Ecosystem,
+    component: PolicyComponent,
+  ) {
+    return this.runner.settings().executionPolicies[ecosystem]?.[component] ??
+      { mode: 'auto' as const };
+  }
+
+  globalExecutionMode(
+    ecosystem: Ecosystem,
+    component: PolicyComponent,
+  ): 'auto' | 'explicit' {
+    const key = `${ecosystem}:${component}`;
+    return this.pendingExplicitPolicies()[key]
+      ? 'explicit'
+      : this.globalExecutionPolicy(ecosystem, component).mode === 'explicit'
+        ? 'explicit'
+        : 'auto';
+  }
+
+  globalPolicyDraft(
+    ecosystem: Ecosystem,
+    component: PolicyComponent,
+  ): string {
+    return this.globalPolicyPathDrafts()[`${ecosystem}:${component}`] ?? '';
+  }
+
+  updateGlobalPolicyDraft(
+    ecosystem: Ecosystem,
+    component: PolicyComponent,
+    value: string,
+  ): void {
+    this.globalPolicyPathDrafts.update((drafts) => ({
+      ...drafts,
+      [`${ecosystem}:${component}`]: value,
+    }));
+  }
+
+  async updateGlobalExecutionMode(
+    ecosystem: Ecosystem,
+    component: PolicyComponent,
+    event: Event,
+  ): Promise<void> {
+    const mode = (event.target as HTMLSelectElement).value as
+      'auto' | 'explicit';
+    if (ecosystem === 'node' && component === 'runtime') {
+      await this.updateGlobalNodeMode(event);
+      return;
+    }
+    const key = `${ecosystem}:${component}`;
+    if (mode === 'explicit') {
+      this.runner.error.set(null);
+      this.pendingExplicitPolicies.update((policies) => ({
+        ...policies,
+        [key]: true,
+      }));
+      await this.runner.refreshRuntimeInstallations(ecosystem, component);
+      return;
+    }
+    this.pendingExplicitPolicies.update((policies) => {
+      const { [key]: _removed, ...remaining } = policies;
+      return remaining;
+    });
+    const current = this.runner.settings().executionPolicies;
+    await this.runner.updateSettings({
+      executionPolicies: this.mergeExecutionPolicy(current, ecosystem, component, {
+        mode,
+      }),
+    });
+  }
+
+  async saveGlobalExecutionPath(
+    ecosystem: Ecosystem,
+    component: PolicyComponent,
+  ): Promise<void> {
+    const path = this.globalPolicyDraft(ecosystem, component).trim();
+    if (!path) return;
+    await this.runner.updateSettings({
+      executionPolicies: this.mergeExecutionPolicy(
+        this.runner.settings().executionPolicies,
+        ecosystem,
+        component,
+        { mode: 'explicit', path },
+      ),
+    }, 'Política de runtime atualizada.');
+    if (!this.runner.error()) {
+      const key = `${ecosystem}:${component}`;
+      this.pendingExplicitPolicies.update((policies) => {
+        const { [key]: _removed, ...remaining } = policies;
+        return remaining;
+      });
+    }
+  }
+
+  selectRuntimeInstallation(
+    ecosystem: Ecosystem,
+    component: PolicyComponent,
+    event: Event,
+  ): void {
+    const selectedPath = (event.target as HTMLSelectElement).value;
+    if (selectedPath) {
+      this.updateGlobalPolicyDraft(ecosystem, component, selectedPath);
+    }
+  }
+
+  async browseRuntimePath(
+    ecosystem: Ecosystem,
+    component: PolicyComponent,
+  ): Promise<void> {
+    const selectedPath = await this.runner.chooseRuntimePath(
+      ecosystem,
+      component,
+      this.globalPolicyDraft(ecosystem, component) || undefined,
+    );
+    if (selectedPath) {
+      this.updateGlobalPolicyDraft(ecosystem, component, selectedPath);
+    }
+  }
+
+  runtimeInstallationLabel(
+    ecosystem: Ecosystem,
+    component: PolicyComponent,
+  ): string {
+    const count = this.runner.runtimeInstallationCatalog(
+      ecosystem,
+      component,
+    ).installations.length;
+    return count
+      ? 'Selecionar uma instalação detectada'
+      : 'Nenhuma instalação encontrada';
+  }
+
+  resolvedEcosystemSummary(ecosystem: Ecosystem): string {
+    const projects = this.runner.workspaces()
+      .flatMap((catalog) => catalog.projects)
+      .filter((project) => project.ecosystem === ecosystem);
+    if (!projects.length) return 'Nenhum projeto detectado neste ecossistema.';
+    const versions = new Set(projects.flatMap((project) =>
+      Object.values(project.runtime.components)
+        .map((component) => component?.version)
+        .filter((version): version is string => !!version)
+    ));
+    return versions.size
+      ? `Detectado nos projetos: ${[...versions].join(', ')}.`
+      : 'Projetos detectados; runtime ainda não resolvido.';
+  }
+
+  private mergeExecutionPolicy(
+    policies: ExecutionPolicies,
+    ecosystem: Ecosystem,
+    component: PolicyComponent,
+    value: { mode: 'auto' | 'explicit'; path?: string },
+  ): ExecutionPolicies {
+    return {
+      ...policies,
+      [ecosystem]: {
+        ...(policies[ecosystem] ?? {}),
+        [component]: value,
+      },
+    };
+  }
+
   async updateExitBehavior(event: Event): Promise<void> {
     const value = (event.target as HTMLInputElement).value;
     await this.runner.updateSettings(
@@ -576,6 +851,35 @@ export class AppComponent implements OnInit, OnDestroy {
         ? 'Ao fechar, o Runner encerrará todos os processos gerenciados.'
         : 'Os processos continuarão executando quando a interface for fechada.',
     );
+  }
+
+  async updateTheme(theme: AppTheme): Promise<void> {
+    this.applyTheme(theme);
+    await this.runner.updateSettings(
+      { theme },
+      'Tema atualizado.',
+    );
+    if (this.runner.error()) {
+      this.applyTheme(this.runner.settings().theme);
+    }
+  }
+
+  private applyTheme(theme: AppTheme): void {
+    const root = this.document.documentElement;
+    const body = this.document.body;
+    const resolvedTheme = theme === 'system'
+      ? (this.systemThemeQuery?.matches ? 'dark' : 'light')
+      : theme;
+
+    root.dataset['themePreference'] = theme;
+    root.dataset['theme'] = resolvedTheme;
+    root.style.colorScheme = resolvedTheme;
+
+    body.dataset['themePreference'] = theme;
+    body.dataset['theme'] = resolvedTheme;
+    body.style.colorScheme = resolvedTheme;
+
+    this.effectiveTheme.set(resolvedTheme);
   }
 
   isValidLogLimit(value: string): boolean {
@@ -719,6 +1023,7 @@ export class AppComponent implements OnInit, OnDestroy {
       })),
       environment: workspace.environment,
       nodePolicy: workspace.nodePolicy,
+      executionPolicies: workspace.executionPolicies,
       ...changes,
     };
   }

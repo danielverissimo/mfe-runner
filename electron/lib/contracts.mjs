@@ -1,6 +1,9 @@
 export const IPC_CHANNELS = Object.freeze({
   getSnapshot: 'runner:get-snapshot',
   listNodeVersions: 'runner:list-node-versions',
+  listRuntimeInstallations: 'runner:list-runtime-installations',
+  chooseRuntimePath: 'runner:choose-runtime-path',
+  openRuntimeDownload: 'runner:open-runtime-download',
   chooseProjectDirectory: 'runner:choose-project-directory',
   inspectProjectSource: 'runner:inspect-project-source',
   projectSourceInspectionProgress: 'runner:project-source-inspection-progress',
@@ -40,7 +43,55 @@ export const IPC_CHANNELS = Object.freeze({
 });
 
 export const NODE_POLICY_MODES = new Set(['inherit', 'auto', 'explicit']);
+export const EXECUTION_POLICY_MODES = NODE_POLICY_MODES;
+export const ECOSYSTEM_IDS = new Set([
+  'node',
+  'java-maven',
+  'java-gradle',
+  'dotnet',
+  'python',
+  'rust',
+  'go',
+]);
+export const EXECUTION_POLICY_COMPONENTS = new Set([
+  'runtime',
+  'tool',
+  'packageManager',
+]);
 export const ENVIRONMENTS = new Set(['local', 'des', 'hom', 'prod']);
+
+export function validateRuntimeComponentRequest(value) {
+  const request = assertPlainObject(value, 'Seleção de runtime');
+  const ecosystem = assertNonEmptyString(
+    request.ecosystem,
+    'Ecossistema',
+    32,
+  );
+  const component = assertNonEmptyString(
+    request.component,
+    'Componente',
+    32,
+  );
+  if (!ECOSYSTEM_IDS.has(ecosystem)) {
+    throw new TypeError(`Ecossistema não suportado: ${ecosystem}.`);
+  }
+  if (!EXECUTION_POLICY_COMPONENTS.has(component)) {
+    throw new TypeError(`Componente não suportado: ${component}.`);
+  }
+  return { ecosystem, component };
+}
+
+export function validateRuntimePathPickerRequest(value) {
+  const request = assertPlainObject(value, 'Seletor de runtime');
+  return {
+    ...validateRuntimeComponentRequest(request),
+    initialPath: assertOptionalString(
+      request.initialPath,
+      'Path inicial',
+      4096,
+    ),
+  };
+}
 
 export function assertPlainObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -63,6 +114,39 @@ export function assertOptionalString(value, label, maxLength = 2048) {
   return assertNonEmptyString(value, label, maxLength);
 }
 
+export function validateHealthCheck(value) {
+  const healthCheck = assertPlainObject(value, 'Health check');
+  const type = assertNonEmptyString(healthCheck.type, 'Tipo do health check', 16);
+  if (!new Set(['none', 'process', 'tcp', 'http']).has(type)) {
+    throw new TypeError(`Tipo de health check não suportado: ${type}.`);
+  }
+  const port = healthCheck.port === undefined || healthCheck.port === null
+    ? undefined
+    : Number(healthCheck.port);
+  if (
+    port !== undefined &&
+    (!Number.isInteger(port) || port < 1 || port > 65_535)
+  ) {
+    throw new TypeError('Porta do health check inválida.');
+  }
+  const path = assertOptionalString(
+    healthCheck.path,
+    'Path HTTP do health check',
+    256,
+  );
+  if (path && (!path.startsWith('/') || path.startsWith('//'))) {
+    throw new TypeError('O path HTTP do health check deve começar com "/".');
+  }
+  if ((type === 'tcp' || type === 'http') && port === undefined) {
+    throw new TypeError('Informe a porta do health check.');
+  }
+  return {
+    type,
+    ...(port !== undefined ? { port } : {}),
+    ...(type === 'http' && path ? { path } : {}),
+  };
+}
+
 export function validateNodePolicy(value, { allowInherit = true } = {}) {
   const policy = assertPlainObject(value, 'Política de Node');
   const mode = assertNonEmptyString(policy.mode, 'Modo da política', 16);
@@ -74,6 +158,75 @@ export function validateNodePolicy(value, { allowInherit = true } = {}) {
     throw new TypeError('Informe a versão para a política explícita.');
   }
   return { mode, ...(version ? { version } : {}) };
+}
+
+export function validateSelectionPolicy(
+  value,
+  { allowInherit = true, label = 'Política de execução' } = {},
+) {
+  const policy = assertPlainObject(value, label);
+  const mode = assertNonEmptyString(policy.mode, `${label}: modo`, 16);
+  if (
+    !EXECUTION_POLICY_MODES.has(mode) ||
+    (!allowInherit && mode === 'inherit')
+  ) {
+    throw new TypeError(`Modo de execução não suportado: ${mode}.`);
+  }
+  const version = assertOptionalString(
+    policy.version,
+    `${label}: versão`,
+    128,
+  );
+  const executablePath = assertOptionalString(
+    policy.path,
+    `${label}: path`,
+  );
+  if (mode === 'explicit' && !version && !executablePath) {
+    throw new TypeError(
+      `${label}: informe uma versão ou executável para a seleção explícita.`,
+    );
+  }
+  return {
+    mode,
+    ...(version ? { version } : {}),
+    ...(executablePath ? { path: executablePath } : {}),
+  };
+}
+
+export function validateExecutionPolicies(
+  value,
+  { allowInherit = true } = {},
+) {
+  if (value === undefined || value === null) return {};
+  const policies = assertPlainObject(value, 'Políticas de execução');
+  return Object.fromEntries(
+    Object.entries(policies).map(([ecosystem, components]) => {
+      if (!ECOSYSTEM_IDS.has(ecosystem)) {
+        throw new TypeError(`Ecossistema não suportado: ${ecosystem}.`);
+      }
+      const source = assertPlainObject(
+        components,
+        `Políticas de ${ecosystem}`,
+      );
+      const validated = Object.fromEntries(
+        Object.entries(source).map(([component, policy]) => {
+          if (!EXECUTION_POLICY_COMPONENTS.has(component)) {
+            throw new TypeError(
+              `Componente de execução não suportado: ${component}.`,
+            );
+          }
+          return [
+            component,
+            validateSelectionPolicy(policy, {
+              allowInherit,
+              label: `${ecosystem}/${component}`,
+            }),
+          ];
+        }),
+      );
+      return [ecosystem, validated];
+    }),
+  );
 }
 
 export function validateEnvironment(value) {
@@ -99,7 +252,7 @@ export function validateWorkspaceInput(value) {
   if (new Set(sourcePaths).size !== sourcePaths.length) {
     throw new TypeError('Não repita o mesmo path de projeto.');
   }
-  return {
+  const validated = {
     name: assertNonEmptyString(workspace.name, 'Nome da workspace', 100),
     projectSources,
     environment: validateEnvironment(workspace.environment ?? 'local'),
@@ -107,6 +260,12 @@ export function validateWorkspaceInput(value) {
       workspace.nodePolicy ?? { mode: 'inherit' },
     ),
   };
+  if (workspace.executionPolicies !== undefined) {
+    validated.executionPolicies = validateExecutionPolicies(
+      workspace.executionPolicies,
+    );
+  }
+  return validated;
 }
 
 function validateLinkScript(value, label) {
@@ -221,6 +380,8 @@ export function validateDirectoryPickerRequest(value) {
 
 export function validateProcessRequest(value) {
   const request = assertPlainObject(value, 'Solicitação de processo');
+  const commandId = assertOptionalString(request.commandId, 'Comando', 160);
+  const script = assertOptionalString(request.script, 'Script', 100);
   return {
     workspaceId: assertNonEmptyString(
       request.workspaceId,
@@ -228,7 +389,8 @@ export function validateProcessRequest(value) {
       100,
     ),
     projectId: assertNonEmptyString(request.projectId, 'Projeto', 1024),
-    script: assertOptionalString(request.script, 'Script', 100),
+    ...(commandId ? { commandId } : {}),
+    ...(script ? { script } : {}),
   };
 }
 
@@ -342,6 +504,21 @@ export function validateProjectUpdate(value) {
   const update = validateProjectRequest(value);
   if (value.nodePolicy !== undefined) {
     update.nodePolicy = validateNodePolicy(value.nodePolicy);
+  }
+  if (value.executionPolicies !== undefined) {
+    update.executionPolicies = validateExecutionPolicies(
+      value.executionPolicies,
+    );
+  }
+  if (value.healthCheck !== undefined) {
+    update.healthCheck = validateHealthCheck(value.healthCheck);
+  }
+  if (value.defaultCommandId !== undefined) {
+    update.defaultCommandId = assertOptionalString(
+      value.defaultCommandId,
+      'Comando padrão',
+      160,
+    );
   }
   if (value.defaultScript !== undefined) {
     update.defaultScript = assertOptionalString(

@@ -690,6 +690,68 @@ nav a:hover {
   line-height: 1.7;
 }
 
+.ecosystem-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ecosystem-card {
+  display: grid;
+  min-height: 145px;
+  align-content: start;
+  gap: 10px;
+  padding: 22px;
+  border: 1px solid rgb(255 183 77 / 24%);
+  border-radius: 15px;
+  background: linear-gradient(145deg, rgb(255 183 77 / 7%), transparent), var(--panel);
+}
+
+.ecosystem-card span {
+  width: max-content;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #ffbd61;
+  background: rgb(255 183 77 / 10%);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.ecosystem-card--stable {
+  border-color: rgb(40 211 155 / 25%);
+  background: linear-gradient(145deg, rgb(40 211 155 / 8%), transparent), var(--panel);
+}
+
+.ecosystem-card--stable span {
+  color: var(--success);
+  background: rgb(40 211 155 / 10%);
+}
+
+.ecosystem-card small,
+.ecosystem-note {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.ecosystem-note {
+  margin: 22px auto 0;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .ecosystem-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .ecosystem-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .workspace-preview {
   overflow: hidden;
   border: 1px solid #283246;

@@ -1,5 +1,22 @@
 export type NodePolicyMode = 'inherit' | 'auto' | 'explicit';
+export type ExecutionPolicyMode = NodePolicyMode;
+export type Ecosystem =
+  | 'node'
+  | 'java-maven'
+  | 'java-gradle'
+  | 'dotnet'
+  | 'python'
+  | 'rust'
+  | 'go';
+export type SupportLevel = 'stable' | 'beta';
+export type CompatibilityStatus =
+  | 'ready'
+  | 'warning'
+  | 'incompatible'
+  | 'unavailable'
+  | 'unknown';
 export type RunnerEnvironment = 'local' | 'des' | 'hom' | 'prod';
+export type AppTheme = 'system' | 'light' | 'dark';
 export type ProjectKind = 'project' | 'library';
 export type ProjectSourceType = 'project' | 'root' | 'monorepo';
 export type ProjectCapability = 'angular' | 'host' | 'mfe';
@@ -25,6 +42,52 @@ export interface NodePolicy {
   version?: string;
 }
 
+export interface SelectionPolicy {
+  mode: ExecutionPolicyMode;
+  version?: string;
+  path?: string;
+}
+
+export type ExecutionPolicies = Partial<Record<
+  Ecosystem,
+  Partial<Record<'runtime' | 'tool' | 'packageManager', SelectionPolicy>>
+>>;
+
+export interface RuntimeComponent {
+  available: boolean;
+  path: string | null;
+  version: string | null;
+  source: string;
+  home?: string | null;
+  id?: string;
+  reason?: string;
+  rawVersion?: string | null;
+}
+
+export interface RuntimeResolution {
+  ecosystem: Ecosystem;
+  supportLevel: SupportLevel;
+  available: boolean;
+  compatibility: CompatibilityStatus;
+  reason: string | null;
+  requirements: Record<string, unknown>;
+  components: {
+    runtime?: RuntimeComponent;
+    tool?: RuntimeComponent;
+    packageManager?: RuntimeComponent;
+  };
+  environment?: Record<string, string>;
+}
+
+export interface CommandProfile {
+  id: string;
+  label: string;
+  category: 'run' | 'build' | 'test' | 'link' | 'other';
+  longRunning: boolean;
+  task: string;
+  args: string[];
+}
+
 export interface NodeVersionCatalog {
   detected: boolean;
   manager: 'nvm-sh' | 'nvm-windows' | null;
@@ -32,8 +95,25 @@ export interface NodeVersionCatalog {
   message: string;
 }
 
+export interface RuntimeInstallation {
+  id: string;
+  label: string;
+  version: string | null;
+  rawVersion: string | null;
+  path: string;
+  source: string;
+}
+
+export interface RuntimeInstallationCatalog {
+  ecosystem: Ecosystem;
+  component: 'runtime' | 'tool' | 'packageManager';
+  installations: RuntimeInstallation[];
+}
+
 export interface RunnerSettings {
   globalNodePolicy: NodePolicy;
+  executionPolicies: ExecutionPolicies;
+  theme: AppTheme;
   stopProcessesOnExit: boolean;
   logLimit: number;
   ide: IdePreference | null;
@@ -61,9 +141,18 @@ export interface DeveloperToolCatalog {
 
 export interface ProjectOverride {
   nodePolicy?: NodePolicy;
+  executionPolicies?: ExecutionPolicies;
+  defaultCommandId?: string;
   defaultScript?: string;
   libraryLinkScripts?: Record<string, string>;
   startupOrder?: number;
+  healthCheck?: ProjectHealthCheck;
+}
+
+export interface ProjectHealthCheck {
+  type: 'none' | 'process' | 'tcp' | 'http';
+  port?: number;
+  path?: string;
 }
 
 export interface LocalLibraryLinkConfig {
@@ -105,6 +194,11 @@ export interface DetectedProjectCandidate {
   name: string;
   relativePath: string;
   technology: string;
+  ecosystem: Ecosystem;
+  supportLevel: SupportLevel;
+  commands: CommandProfile[];
+  defaultCommandId: string | null;
+  runtimeRequirements: Record<string, unknown>;
   suggestedKind: ProjectKind | null;
   evidence: string[];
   capabilities: ProjectCapability[];
@@ -153,13 +247,14 @@ export interface WorkspaceConfig {
   projectSources: ProjectSourceConfig[];
   environment: RunnerEnvironment;
   nodePolicy: NodePolicy;
+  executionPolicies: ExecutionPolicies;
   projectOverrides: Record<string, ProjectOverride>;
   projectOrder?: string[];
   excludedProjectIds: string[];
 }
 
 export interface RunnerConfig {
-  version: 5;
+  version: 6;
   settings: RunnerSettings;
   workspaces: WorkspaceConfig[];
 }
@@ -195,6 +290,9 @@ export interface DiscoveredProject {
   relativePath: string;
   absolutePath: string;
   role: ProjectRole;
+  ecosystem: Ecosystem;
+  technology: string;
+  supportLevel: SupportLevel;
   kind: ProjectKind;
   kindSource: 'detected' | 'user';
   capabilities: ProjectCapability[];
@@ -203,11 +301,17 @@ export interface DiscoveredProject {
   scripts: Record<string, string>;
   scriptNames: string[];
   defaultScript: string | null;
+  commands: CommandProfile[];
+  commandIds: string[];
+  defaultCommandId: string | null;
   port: number | null;
+  healthCheck: ProjectHealthCheck | null;
   federation: FederationInfo | null;
   packageEngines: Record<string, string>;
   registrations: ManifestRegistration[];
   node: NodeRuntime;
+  runtime: RuntimeResolution;
+  runtimeRequirements: Record<string, unknown>;
   git: GitContext;
   library?: LibraryMetadata;
   libraryLinks: LibraryLinkStatus[];
@@ -266,6 +370,10 @@ export interface WorkspaceCatalog {
   projects: DiscoveredProject[];
   manifests: ManifestSummary[];
   warnings: string[];
+  betaEcosystems: Array<{
+    ecosystem: Ecosystem;
+    technology: string;
+  }>;
   discoveredAt: string | null;
   gitUpdatedAt: string | null;
 }
@@ -309,6 +417,7 @@ export interface ManagedProcess {
   projectId: string;
   projectName: string;
   script: string;
+  commandId?: string;
   status: ProcessStatus;
   pid: number | null;
   port: number | null;
@@ -356,12 +465,14 @@ export interface WorkspaceInput {
   projectSources: ProjectSourceInput[];
   environment: RunnerEnvironment;
   nodePolicy: NodePolicy;
+  executionPolicies: ExecutionPolicies;
 }
 
 export interface ProcessRequest {
   workspaceId: string;
   projectId: string;
   script?: string;
+  commandId?: string;
 }
 
 export interface LibraryLinkRequest {
@@ -396,6 +507,19 @@ export interface DiagnosticExportResult {
 export interface RunnerBridge {
   getSnapshot(): Promise<RunnerSnapshot>;
   listNodeVersions(): Promise<NodeVersionCatalog>;
+  listRuntimeInstallations(input: {
+    ecosystem: Ecosystem;
+    component: 'runtime' | 'tool' | 'packageManager';
+  }): Promise<RuntimeInstallationCatalog>;
+  chooseRuntimePath(input: {
+    ecosystem: Ecosystem;
+    component: 'runtime' | 'tool' | 'packageManager';
+    initialPath?: string;
+  }): Promise<string | null>;
+  openRuntimeDownload(input: {
+    ecosystem: Ecosystem;
+    component: 'runtime' | 'tool' | 'packageManager';
+  }): Promise<void>;
   chooseProjectDirectory(input?: {
     initialPath?: string;
   }): Promise<string | null>;
@@ -449,9 +573,12 @@ export interface RunnerBridge {
     workspaceId: string;
     projectId: string;
     nodePolicy?: NodePolicy;
+    executionPolicies?: ExecutionPolicies;
+    defaultCommandId?: string;
     defaultScript?: string;
     libraryLinkScripts?: Record<string, string>;
     startupOrder?: number;
+    healthCheck?: ProjectHealthCheck;
   }): Promise<RunnerSnapshot>;
   updateProjectOrder(input: {
     workspaceId: string;

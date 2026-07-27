@@ -2,8 +2,9 @@
 
 MFE Runner is a desktop control center for local applications, services,
 frontends, monoliths, monorepos, micro frontends, and shared libraries. A
-project does not need to use Angular or micro frontend architecture. The
-current discovery engine supports projects with a `package.json`.
+project does not need to use Angular or micro frontend architecture. Node.js
+support is stable. Java/Maven, Java/Gradle, .NET, Python, Rust, and Go are Beta
+integrations and are labeled as such in the workspace.
 
 ## Workspaces
 
@@ -52,15 +53,31 @@ overridden in project settings.
 
 ## Running projects
 
-The Projects screen supports individual and batch process controls. Only
-scripts declared in each project's `package.json` are eligible. On first
-discovery, `npm run start` is preferred when the `start` script exists.
+The Projects screen supports individual and batch process controls. Commands
+are detected statically by each ecosystem adapter and displayed before
+execution. Node prefers the declared `start` script. Java recognizes supported
+Maven/Gradle application plugins and safe run/test/build profiles. Ambiguous
+projects remain discovered but require a reviewed command.
 
 The status column reports stopped, starting, healthy, failed, port conflict,
 and one-shot task states. A port conflict can be inspected and resolved only
 after explicit user confirmation.
 
-## Node.js
+## Runtimes and tools
+
+All ecosystems use this precedence:
+
+```text
+project → workspace → global settings
+```
+
+Choose automatic detection or an explicit local installation. Workspace
+settings display only ecosystems discovered in that workspace, while project
+settings display only relevant runtime/tool components. An incompatible or
+unavailable result blocks Start and explains why. MFE Runner never downloads
+or installs a runtime, SDK, wrapper, package manager, or toolchain.
+
+### Node.js
 
 Node.js is resolved with this precedence:
 
@@ -72,6 +89,27 @@ Automatic mode reads the nearest applicable `.nvmrc`. An explicit setting can
 use a locally installed NVM version or a manually entered version. MFE Runner
 does not install Node.js and blocks execution when the requested runtime is
 unavailable.
+
+### Java/Maven and Java/Gradle (Beta)
+
+The Runner detects Maven/Gradle wrappers, installed tools, JDK requirements,
+Spring Boot, Quarkus, Application plugins, and common test/build tasks without
+running the build during discovery. JDK, Maven, and Gradle can be selected
+independently at global, workspace, or project level.
+
+### .NET, Python, Rust, and Go (Beta)
+
+These adapters provide static project discovery, basic runtime diagnostics,
+and structured run/test/build commands. Python launches the resolved
+interpreter directly. Go sets `GOTOOLCHAIN=path` so a command cannot download a
+toolchain automatically. Review diagnostics and command profiles before use,
+and report platform-specific gaps with a minimal fixture when possible.
+
+## Health checks
+
+Project settings can use no health check, process-liveness, a local TCP port,
+or a local HTTP endpoint. HTTP checks are limited to the configured local port
+and path; a remote URL cannot be supplied by the renderer.
 
 ## Local libraries
 
@@ -104,6 +142,14 @@ context, warnings, and selected logs. Absolute paths are removed by default,
 and known sensitive values are redacted again during export.
 
 The per-process log buffer limit is configurable in Settings.
+
+## Appearance
+
+Settings provides Light, Dark, and System themes. System is the default for new
+and existing configurations that do not contain an explicit preference. It
+follows operating-system appearance changes while the application is open.
+The selected preference is global, is applied immediately to both the renderer
+and the native Electron window, and is preserved between launches.
 
 ## Git context
 

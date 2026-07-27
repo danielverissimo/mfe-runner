@@ -5,7 +5,7 @@
         <th>Projeto</th>
         <th>Porta</th>
         <th>Comando</th>
-        <th>Node</th>
+        <th>Runtime</th>
         <th>Estado</th>
         <th>Tempo</th>
         <th class="actions-heading">Ações</th>
@@ -25,7 +25,13 @@
               </span>
               <div>
                 <strong>{{ project.displayName }}</strong>
-                <span>{{ roleLabel(project.role) }} · {{ project.relativePath }}</span>
+                <span>
+                  {{ roleLabel(project.role) }} · {{ project.technology }} ·
+                  {{ project.relativePath }}
+                  @if (project.supportLevel === 'beta') {
+                    <b class="beta-badge">Beta</b>
+                  }
+                </span>
                 @if (project.warnings.length) {
                   <small [title]="project.warnings.join('\n')">
                     <app-runner-icon name="warning" [size]="11" />
@@ -68,30 +74,38 @@
           </td>
           <td>
             @if (project.orphaned) {
-              <code>npm run {{ process?.script }}</code>
+              <code>{{ process?.commandId ?? process?.script }}</code>
             } @else {
               <select
                 class="script-select"
-                [value]="selectedScript(project)"
+                [value]="selectedCommandId(project)"
                 [disabled]="isActive(process?.status)"
                 [attr.aria-label]="'Comando de ' + project.displayName"
                 (change)="setScript(project.id, $event)"
               >
-                @for (script of project.scriptNames; track script) {
+                @for (command of project.commands; track command.id) {
                   <option
-                    [value]="script"
-                    [selected]="script === selectedScript(project)"
-                  >npm run {{ script }}</option>
+                    [value]="command.id"
+                    [selected]="command.id === selectedCommandId(project)"
+                  >{{ command.label }}</option>
+                }
+                @if (!project.commands.length) {
+                  @for (script of project.scriptNames; track script) {
+                    <option
+                      [value]="script"
+                      [selected]="script === selectedScript(project)"
+                    >npm run {{ script }}</option>
+                  }
                 }
               </select>
             }
           </td>
           <td>
             <div class="node">
-              <strong>{{ project.node.version ? 'v' + project.node.version : 'PATH' }}</strong>
-              <span>{{ project.node.source === 'nvmrc' ? '.nvmrc' : project.node.source }}</span>
-              @if (!project.node.available) {
-                <small [title]="project.node.reason">indisponível</small>
+              <strong>{{ runtimeLabel(project) }}</strong>
+              <span>{{ runtimeSource(project) }}</span>
+              @if (!project.runtime.available) {
+                <small [title]="project.runtime.reason ?? ''">indisponível</small>
               }
             </div>
           </td>
@@ -107,7 +121,7 @@
                   type="button"
                   title="Iniciar"
                   [attr.aria-label]="'Iniciar ' + project.displayName"
-                  [disabled]="busy || !project.node.available || !selectedScript(project)"
+                  [disabled]="busy || !project.runtime.available || (!selectedCommand(project) && !selectedScript(project))"
                   (click)="start(project)"
                 ><app-runner-icon name="play" [size]="18" /></button>
               } @else {

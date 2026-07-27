@@ -11,9 +11,12 @@ import {
 import { FormsModule } from '@angular/forms';
 import {
   DiscoveredProject,
+  ExecutionPolicies,
+  ExecutionPolicyMode,
   NodePolicy,
   NodePolicyMode,
   NodeVersionCatalog,
+  ProjectHealthCheck,
   WorkspaceConfig,
 } from '../../core/models/runner.models';
 import { NodeVersionPickerComponent } from '../node-version-picker/node-version-picker.component';
@@ -21,9 +24,12 @@ import { ActionTooltipDirective } from '../action-tooltip/action-tooltip.directi
 
 export interface ProjectSettingsChange {
   nodePolicy: NodePolicy;
+  executionPolicies: ExecutionPolicies;
+  defaultCommandId?: string;
   defaultScript?: string;
   libraryLinkScripts: Record<string, string>;
   startupOrder: number;
+  healthCheck: ProjectHealthCheck;
 }
 
 @Component({
@@ -48,8 +54,16 @@ export class ProjectSettingsDialogComponent implements OnChanges {
   nodeMode: NodePolicyMode = 'inherit';
   nodeVersion = '';
   defaultScript = '';
+  defaultCommandId = '';
+  runtimeMode: ExecutionPolicyMode = 'inherit';
+  runtimePath = '';
+  toolMode: ExecutionPolicyMode = 'inherit';
+  toolPath = '';
   libraryLinkScripts: Record<string, string> = {};
   startupOrder = 500;
+  healthCheckType: ProjectHealthCheck['type'] = 'process';
+  healthCheckPort: number | null = null;
+  healthCheckPath = '/';
 
   ngOnChanges(changes: SimpleChanges): void {
     if (
@@ -62,17 +76,67 @@ export class ProjectSettingsDialogComponent implements OnChanges {
   }
 
   submit(): void {
-    if (this.nodeMode === 'explicit' && !this.nodeVersion.trim()) return;
+    if (
+      this.runtimeMode === 'explicit' &&
+      !(this.project.ecosystem === 'node'
+        ? this.nodeVersion.trim()
+        : this.runtimePath.trim())
+    ) return;
+    const runtimePolicy = {
+      mode: this.runtimeMode,
+      ...(this.runtimeMode === 'explicit'
+        ? this.project.ecosystem === 'node'
+          ? { version: this.nodeVersion.trim() }
+          : { path: this.runtimePath.trim() }
+        : {}),
+    };
+    const executionPolicies: ExecutionPolicies = {
+      [this.project.ecosystem]: {
+        runtime: runtimePolicy,
+        ...(this.project.ecosystem.startsWith('java-')
+          ? {
+              tool: {
+                mode: this.toolMode,
+                ...(this.toolMode === 'explicit'
+                  ? { path: this.toolPath.trim() }
+                  : {}),
+              },
+            }
+          : {}),
+      },
+    };
+    const selectedCommand = this.project.commands.find(
+      (command) => command.id === this.defaultCommandId,
+    );
     this.saveSettings.emit({
       nodePolicy: {
-        mode: this.nodeMode,
-        ...(this.nodeMode === 'explicit'
+        mode: this.project.ecosystem === 'node'
+          ? this.runtimeMode
+          : this.nodeMode,
+        ...(this.project.ecosystem === 'node' && this.runtimeMode === 'explicit'
           ? { version: this.nodeVersion.trim() }
           : {}),
       },
-      ...(this.defaultScript ? { defaultScript: this.defaultScript } : {}),
+      executionPolicies,
+      ...(this.defaultCommandId
+        ? { defaultCommandId: this.defaultCommandId }
+        : {}),
+      ...(selectedCommand?.task
+        ? { defaultScript: selectedCommand.task }
+        : this.defaultScript
+          ? { defaultScript: this.defaultScript }
+          : {}),
       libraryLinkScripts: { ...this.libraryLinkScripts },
       startupOrder: Math.max(0, Math.min(999, Math.round(this.startupOrder))),
+      healthCheck: {
+        type: this.healthCheckType,
+        ...((this.healthCheckType === 'tcp' || this.healthCheckType === 'http')
+          ? { port: Number(this.healthCheckPort) }
+          : {}),
+        ...(this.healthCheckType === 'http' && this.healthCheckPath.trim()
+          ? { path: this.healthCheckPath.trim() }
+          : {}),
+      },
     });
   }
 
@@ -113,7 +177,24 @@ export class ProjectSettingsDialogComponent implements OnChanges {
   private resetDraft(): void {
     if (!this.project || !this.workspace) return;
     const override = this.workspace.projectOverrides[this.project.id];
-    this.nodeMode = override?.nodePolicy?.mode ?? 'inherit';
+    const ecosystemPolicy =
+      override?.executionPolicies?.[this.project.ecosystem];
+    this.runtimeMode =
+      ecosystemPolicy?.runtime?.mode ??
+      (this.project.ecosystem === 'node'
+        ? override?.nodePolicy?.mode
+        : undefined) ??
+      'inherit';
+    this.runtimePath =
+      ecosystemPolicy?.runtime?.path ??
+      this.project.runtime.components.runtime?.path ??
+      '';
+    this.toolMode = ecosystemPolicy?.tool?.mode ?? 'inherit';
+    this.toolPath =
+      ecosystemPolicy?.tool?.path ??
+      this.project.runtime.components.tool?.path ??
+      '';
+    this.nodeMode = this.runtimeMode;
     this.nodeVersion =
       override?.nodePolicy?.version ??
       this.project.node.version ??
@@ -123,9 +204,21 @@ export class ProjectSettingsDialogComponent implements OnChanges {
       this.project.defaultScript ??
       this.project.scriptNames[0] ??
       '';
+    this.defaultCommandId =
+      override?.defaultCommandId ??
+      this.project.defaultCommandId ??
+      this.project.commands[0]?.id ??
+      '';
     this.startupOrder =
       override?.startupOrder ??
       this.project.startupOrder;
+    const healthCheck = override?.healthCheck ?? this.project.healthCheck ?? {
+      type: this.project.port ? 'tcp' : 'process',
+      ...(this.project.port ? { port: this.project.port } : {}),
+    };
+    this.healthCheckType = healthCheck.type;
+    this.healthCheckPort = healthCheck.port ?? this.project.port;
+    this.healthCheckPath = healthCheck.path ?? '/';
     this.libraryLinkScripts = {
       ...(override?.libraryLinkScripts ?? {}),
     };

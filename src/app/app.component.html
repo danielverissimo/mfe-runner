@@ -1,4 +1,10 @@
-<div class="app-shell" appI18nRoot>
+<div
+  class="app-shell"
+  [attr.data-theme]="effectiveTheme()"
+  [class.app-shell--light]="effectiveTheme() === 'light'"
+  [class.app-shell--dark]="effectiveTheme() === 'dark'"
+  appI18nRoot
+>
   <aside class="sidebar">
     <div class="brand">
       <span class="brand__mark" aria-hidden="true"><span></span><span></span><span></span></span>
@@ -159,6 +165,18 @@
                 <button class="button button--accent" type="button" (click)="openWorkspaceDialog(catalog.workspace)"><app-runner-icon name="settings" [size]="15" /> Configurar workspace</button>
               </div>
             </section>
+            @if (catalog.betaEcosystems.length) {
+              <aside class="beta-workspace-banner" role="status">
+                <app-runner-icon name="warning" [size]="18" />
+                <div>
+                  <strong>Tecnologias Beta nesta workspace</strong>
+                  <span>
+                    {{ betaTechnologyNames(catalog) }} ainda estão em
+                    validação. Diagnósticos e contribuições são bem-vindos.
+                  </span>
+                </div>
+              </aside>
+            }
 
             <section class="project-summary" aria-label="Resumo da workspace">
               <div><span class="summary-icon summary-icon--projects"><app-runner-icon name="grid" [size]="20" /></span><strong>{{ workspaceMetrics().projects }}</strong><small>Projetos</small></div>
@@ -323,23 +341,210 @@
         @case ('settings') {
           <section class="section-heading"><div><span class="eyebrow">Preferências globais</span><h2>Configurações</h2><p>Defaults herdados por todas as workspaces e projetos.</p></div></section>
           <section class="settings-grid">
-            <article class="settings-card settings-card--wide">
-              <h3>Versão global do Node</h3>
-              <p>Fallback para projetos sem override ou .nvmrc aplicável.</p>
-              <select [value]="runner.settings().globalNodePolicy.mode" (change)="updateGlobalNodeMode($event)">
-                <option value="auto">Detectar .nvmrc</option>
-                <option value="explicit">Versão específica</option>
-              </select>
-              @if (runner.settings().globalNodePolicy.mode === 'explicit') {
-                <app-node-version-picker
-                  [catalog]="runner.nodeVersions()"
-                  [loading]="runner.nodeVersionsLoading()"
-                  [value]="globalVersionDraft()"
-                  (valueChange)="globalVersionDraft.set($event)"
-                  (refresh)="runner.refreshNodeVersions()"
-                />
-                <button class="button button--accent" type="button" (click)="saveGlobalVersion()">Salvar versão</button>
-              }
+            <article class="settings-card settings-card--wide theme-settings">
+              <div class="theme-settings__heading">
+                <span class="theme-settings__icon" aria-hidden="true">◐</span>
+                <div>
+                  <h3>Aparência</h3>
+                  <p>Escolha o tema do aplicativo ou acompanhe automaticamente o sistema operacional.</p>
+                </div>
+              </div>
+              <div
+                class="theme-options"
+                role="radiogroup"
+                aria-label="Tema do aplicativo"
+                [attr.aria-busy]="runner.loading()"
+              >
+                <label class="theme-option" [class.active]="runner.settings().theme === 'system'">
+                  <input
+                    class="theme-option__input"
+                    type="radio"
+                    name="app-theme"
+                    value="system"
+                    [checked]="runner.settings().theme === 'system'"
+                    [disabled]="runner.loading()"
+                    (change)="updateTheme('system')"
+                  />
+                  <span class="theme-options__preview theme-options__preview--system" aria-hidden="true">
+                    <i></i><i></i>
+                  </span>
+                  <span class="theme-option__copy">
+                    <strong>Sistema</strong>
+                    <small>Acompanha a aparência do sistema operacional.</small>
+                  </span>
+                  <span class="theme-option__check" aria-hidden="true">✓</span>
+                </label>
+                <label class="theme-option" [class.active]="runner.settings().theme === 'light'">
+                  <input
+                    class="theme-option__input"
+                    type="radio"
+                    name="app-theme"
+                    value="light"
+                    [checked]="runner.settings().theme === 'light'"
+                    [disabled]="runner.loading()"
+                    (change)="updateTheme('light')"
+                  />
+                  <span class="theme-options__preview theme-options__preview--light" aria-hidden="true">
+                    <i></i>
+                  </span>
+                  <span class="theme-option__copy">
+                    <strong>Claro</strong>
+                    <small>Interface clara com contraste confortável.</small>
+                  </span>
+                  <span class="theme-option__check" aria-hidden="true">✓</span>
+                </label>
+                <label class="theme-option" [class.active]="runner.settings().theme === 'dark'">
+                  <input
+                    class="theme-option__input"
+                    type="radio"
+                    name="app-theme"
+                    value="dark"
+                    [checked]="runner.settings().theme === 'dark'"
+                    [disabled]="runner.loading()"
+                    (change)="updateTheme('dark')"
+                  />
+                  <span class="theme-options__preview theme-options__preview--dark" aria-hidden="true">
+                    <i></i>
+                  </span>
+                  <span class="theme-option__copy">
+                    <strong>Escuro</strong>
+                    <small>Mantém a aparência escura original do Runner.</small>
+                  </span>
+                  <span class="theme-option__check" aria-hidden="true">✓</span>
+                </label>
+              </div>
+            </article>
+            <article class="settings-card settings-card--wide runtime-settings">
+              <h3>Runtimes e ferramentas</h3>
+              <p>
+                Configure os defaults por ecossistema. O Runner nunca instala
+                runtimes, SDKs, wrappers ou gerenciadores automaticamente.
+              </p>
+              <div class="runtime-settings__list">
+                @for (card of ecosystemSettings; track card.ecosystem) {
+                  <details
+                    class="runtime-card"
+                    [open]="card.ecosystem === 'node' || card.ecosystem.startsWith('java-')"
+                  >
+                    <summary>
+                      <span>{{ card.label }}</span>
+                      <span
+                        class="support-badge"
+                        [class.support-badge--stable]="card.supportLevel === 'stable'"
+                      >{{ card.supportLevel === 'stable' ? 'Estável' : 'Beta' }}</span>
+                    </summary>
+                    <p>{{ resolvedEcosystemSummary(card.ecosystem) }}</p>
+                    @for (component of card.components; track component.id) {
+                      <section class="runtime-component">
+                        <label>
+                          <span>{{ component.label }}</span>
+                          <select
+                            [value]="
+                              card.ecosystem === 'node' && component.id === 'runtime'
+                                ? runner.settings().globalNodePolicy.mode
+                                : globalExecutionMode(card.ecosystem, component.id)
+                            "
+                            (change)="updateGlobalExecutionMode(card.ecosystem, component.id, $event)"
+                          >
+                            <option value="auto">Detectar automaticamente</option>
+                            <option value="explicit">Selecionar explicitamente</option>
+                          </select>
+                        </label>
+                        @if (
+                          card.ecosystem === 'node' &&
+                          component.id === 'runtime' &&
+                          runner.settings().globalNodePolicy.mode === 'explicit'
+                        ) {
+                          <app-node-version-picker
+                            [catalog]="runner.nodeVersions()"
+                            [loading]="runner.nodeVersionsLoading()"
+                            [value]="globalVersionDraft()"
+                            (valueChange)="globalVersionDraft.set($event)"
+                            (refresh)="runner.refreshNodeVersions()"
+                          />
+                          <button
+                            class="button button--accent"
+                            type="button"
+                            (click)="saveGlobalVersion()"
+                          >Salvar versão do Node</button>
+                          <button
+                            class="button"
+                            type="button"
+                            title="Abrir a página oficial de download do Node.js"
+                            (click)="runner.openRuntimeDownload('node', 'runtime')"
+                          >Obter Node.js</button>
+                        } @else if (
+                          !(card.ecosystem === 'node' && component.id === 'runtime') &&
+                          globalExecutionMode(card.ecosystem, component.id) === 'explicit'
+                        ) {
+                          <div class="runtime-component__explicit">
+                            <div class="runtime-component__catalog">
+                              <label>
+                                <span>Instalações detectadas</span>
+                                <select
+                                  [value]="globalPolicyDraft(card.ecosystem, component.id)"
+                                  (change)="selectRuntimeInstallation(card.ecosystem, component.id, $event)"
+                                >
+                                  <option value="">
+                                    {{ runtimeInstallationLabel(card.ecosystem, component.id) }}
+                                  </option>
+                                  @for (
+                                    installation of runner.runtimeInstallationCatalog(
+                                      card.ecosystem,
+                                      component.id
+                                    ).installations;
+                                    track installation.id
+                                  ) {
+                                    <option [value]="installation.path">
+                                      {{ installation.label }}
+                                      {{ installation.version ? ' · ' + installation.version : '' }}
+                                    </option>
+                                  }
+                                </select>
+                              </label>
+                              <button
+                                class="button"
+                                type="button"
+                                [disabled]="runner.runtimeInstallationLoading(card.ecosystem, component.id)"
+                                title="Consultar novamente runtimes e ferramentas instalados"
+                                (click)="runner.refreshRuntimeInstallations(card.ecosystem, component.id)"
+                              >
+                                {{ runner.runtimeInstallationLoading(card.ecosystem, component.id) ? 'Buscando…' : 'Atualizar lista' }}
+                              </button>
+                            </div>
+                            <div class="runtime-component__manual">
+                              <input
+                                type="text"
+                                [value]="globalPolicyDraft(card.ecosystem, component.id)"
+                                (input)="updateGlobalPolicyDraft(card.ecosystem, component.id, $any($event.target).value)"
+                                [placeholder]="component.id === 'runtime' ? 'Path do runtime ou diretório home' : 'Path do executável'"
+                              />
+                              <button
+                                class="button"
+                                type="button"
+                                title="Escolher no Finder, Explorer ou seletor de arquivos do sistema"
+                                (click)="browseRuntimePath(card.ecosystem, component.id)"
+                              >Escolher…</button>
+                              <button
+                                class="button button--accent"
+                                type="button"
+                                [disabled]="!globalPolicyDraft(card.ecosystem, component.id).trim()"
+                                (click)="saveGlobalExecutionPath(card.ecosystem, component.id)"
+                              >Salvar</button>
+                              <button
+                                class="button"
+                                type="button"
+                                title="Abrir a página oficial para baixar e instalar"
+                                (click)="runner.openRuntimeDownload(card.ecosystem, component.id)"
+                              >Obter / instalar</button>
+                            </div>
+                          </div>
+                        }
+                      </section>
+                    }
+                  </details>
+                }
+              </div>
             </article>
             <article class="settings-card settings-card--wide">
               <h3>Encerramento seguro</h3>

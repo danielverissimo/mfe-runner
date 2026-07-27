@@ -3,14 +3,18 @@ import {
   DeveloperToolCatalog,
   DiagnosticExportRequest,
   DiagnosticExportResult,
+  Ecosystem,
+  ExecutionPolicies,
   IdePreference,
   LibraryLinkRequest,
   LibraryLinkResult,
   NodePolicy,
+  ProjectHealthCheck,
   NodeVersionCatalog,
   ProcessRequest,
   RunnerSettings,
   RunnerSnapshot,
+  RuntimeInstallationCatalog,
   UpdateState,
   WorkspaceInput,
   ProjectSourceInspection,
@@ -20,9 +24,28 @@ import {
 
 const EMPTY_SNAPSHOT: RunnerSnapshot = {
   config: {
-    version: 5,
+    version: 6,
     settings: {
       globalNodePolicy: { mode: 'auto' },
+      executionPolicies: {
+        node: {
+          runtime: { mode: 'auto' },
+          packageManager: { mode: 'auto' },
+        },
+        'java-maven': {
+          runtime: { mode: 'auto' },
+          tool: { mode: 'auto' },
+        },
+        'java-gradle': {
+          runtime: { mode: 'auto' },
+          tool: { mode: 'auto' },
+        },
+        dotnet: { runtime: { mode: 'auto' } },
+        python: { runtime: { mode: 'auto' }, tool: { mode: 'auto' } },
+        rust: { runtime: { mode: 'auto' }, tool: { mode: 'auto' } },
+        go: { runtime: { mode: 'auto' } },
+      },
+      theme: 'system',
       stopProcessesOnExit: false,
       logLimit: 1500,
       ide: null,
@@ -96,6 +119,10 @@ export class RunnerApiService {
   readonly settings = computed(() => this.snapshot().config.settings);
   readonly nodeVersions = signal<NodeVersionCatalog>(EMPTY_NODE_CATALOG);
   readonly nodeVersionsLoading = signal(false);
+  readonly runtimeInstallations = signal<
+    Record<string, RuntimeInstallationCatalog>
+  >({});
+  readonly runtimeInstallationsLoading = signal<Record<string, boolean>>({});
   readonly developerTools = signal<DeveloperToolCatalog>(
     EMPTY_DEVELOPER_TOOLS,
   );
@@ -338,6 +365,80 @@ export class RunnerApiService {
     }
   }
 
+  runtimeInstallationCatalog(
+    ecosystem: Ecosystem,
+    component: 'runtime' | 'tool' | 'packageManager',
+  ): RuntimeInstallationCatalog {
+    return this.runtimeInstallations()[`${ecosystem}:${component}`] ?? {
+      ecosystem,
+      component,
+      installations: [],
+    };
+  }
+
+  runtimeInstallationLoading(
+    ecosystem: Ecosystem,
+    component: 'runtime' | 'tool' | 'packageManager',
+  ): boolean {
+    return !!this.runtimeInstallationsLoading()[
+      `${ecosystem}:${component}`
+    ];
+  }
+
+  async refreshRuntimeInstallations(
+    ecosystem: Ecosystem,
+    component: 'runtime' | 'tool' | 'packageManager',
+  ): Promise<void> {
+    const key = `${ecosystem}:${component}`;
+    this.runtimeInstallationsLoading.update((state) => ({
+      ...state,
+      [key]: true,
+    }));
+    try {
+      const catalog = await this.getApi().listRuntimeInstallations({
+        ecosystem,
+        component,
+      });
+      this.runtimeInstallations.update((catalogs) => ({
+        ...catalogs,
+        [key]: catalog,
+      }));
+    } catch (error) {
+      this.error.set(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível detectar as instalações locais.',
+      );
+    } finally {
+      this.runtimeInstallationsLoading.update((state) => ({
+        ...state,
+        [key]: false,
+      }));
+    }
+  }
+
+  chooseRuntimePath(
+    ecosystem: Ecosystem,
+    component: 'runtime' | 'tool' | 'packageManager',
+    initialPath?: string,
+  ): Promise<string | null> {
+    return this.getApi().chooseRuntimePath({
+      ecosystem,
+      component,
+      initialPath,
+    });
+  }
+
+  openRuntimeDownload(
+    ecosystem: Ecosystem,
+    component: 'runtime' | 'tool' | 'packageManager',
+  ): Promise<void> {
+    return this.runAction(
+      () => this.getApi().openRuntimeDownload({ ecosystem, component }),
+      'Não foi possível abrir a página oficial de instalação.',
+    );
+  }
+
   async updateSettings(
     input: Partial<RunnerSettings>,
     successMessage?: string,
@@ -353,6 +454,9 @@ export class RunnerApiService {
     defaultScript?: string,
     libraryLinkScripts?: Record<string, string>,
     startupOrder?: number,
+    executionPolicies?: ExecutionPolicies,
+    defaultCommandId?: string,
+    healthCheck?: ProjectHealthCheck,
   ): Promise<void> {
     return this.run(() =>
       this.getApi().updateProject({
@@ -362,6 +466,9 @@ export class RunnerApiService {
         defaultScript,
         libraryLinkScripts,
         startupOrder,
+        executionPolicies,
+        defaultCommandId,
+        healthCheck,
       })
     );
   }

@@ -25,12 +25,26 @@ explicitly adds to a workspace. Only add trusted project directories.
 The application:
 
 - does not accept arbitrary shell commands from the renderer;
-- launches declared scripts with argument arrays and `shell: false`;
+- launches adapter-owned command profiles with argument arrays and
+  `shell: false`;
+- reconstructs executable paths and arguments in the main process from
+  workspace/project/command IDs;
 - keeps the renderer sandboxed and validates preload IPC payloads;
 - uses authenticated local IPC for its persistent supervisor;
 - treats project files and Git state as read-only;
 - redacts known sensitive values in logs and diagnostic exports;
 - removes absolute paths from diagnostic exports by default.
+
+Discovery is deliberately passive. It does not access the network or execute
+wrappers, builds, Maven plugins, Gradle tasks, dependency managers, or project
+scripts. XML/TOML/build metadata is size-limited before parsing; XML entity
+expansion is disabled; Gradle parsing recognizes only conservative static
+patterns. Missing runtimes and tools are diagnosed, never installed.
+
+Windows `.cmd`/`.bat` wrappers use a controlled internal launcher because they
+cannot be spawned directly on Windows. The wrapper path and arguments still
+come from the authoritative adapter, never from renderer-provided command
+text.
 
 An explicitly requested project-owned `link:*` script may update that project's
 dependencies. Its behavior is controlled by the project, not by MFE Runner.

@@ -1,5 +1,10 @@
 import { readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
+import {
+  directoryHasEcosystemMarker,
+  NON_NODE_PROJECT_DETECTORS,
+  SUPPORT_LEVELS,
+} from './ecosystem-adapters.mjs';
 
 const IGNORED_DIRECTORIES = new Set([
   '.angular',
@@ -73,7 +78,9 @@ function angularProjectsForPath(angularConfig, projectPath, sourceRoot) {
 
 export class PackageJsonProjectDetector {
   id = 'package-json';
+  ecosystem = 'node';
   technology = 'Node.js';
+  markerNames = new Set(['package.json']);
 
   async detect(projectPath, sourceRoot) {
     const packageJson = await readJson(path.join(projectPath, 'package.json'));
@@ -165,9 +172,37 @@ export class PackageJsonProjectDetector {
       evidence.push('Script executável');
     }
 
+    const commands = Object.keys(scripts).map((script) => ({
+      id: `node:script:${script}`,
+      label: `npm run ${script}`,
+      category:
+        script.startsWith('test') ? 'test'
+          : script.startsWith('build') ? 'build'
+            : script.startsWith('link:') ? 'link'
+              : ['start', 'dev', 'serve', 'watch'].includes(script)
+                ? 'watch'
+                : 'run',
+      longRunning: ['start', 'dev', 'serve', 'watch'].includes(script),
+      task: script,
+      args: [],
+    }));
+    const preferredScript = scripts.start
+      ? 'start'
+      : angularLibrary && scripts.watch
+        ? 'watch'
+        : scripts.dev
+          ? 'dev'
+          : scripts.serve
+            ? 'serve'
+            : scripts.watch
+              ? 'watch'
+              : null;
+
     return {
       detectorId: this.id,
+      ecosystem: this.ecosystem,
       technology: this.technology,
+      supportLevel: SUPPORT_LEVELS[this.ecosystem],
       name: angularLibrary
         ? libraryPackageName
         : packageJson.name ?? path.basename(projectPath),
@@ -183,6 +218,18 @@ export class PackageJsonProjectDetector {
           ? ngPackageDestination
           : null,
       scripts,
+      commands,
+      defaultCommandId: preferredScript
+        ? `node:script:${preferredScript}`
+        : null,
+      runtimeRequirements: {
+        node: packageJson.engines?.node ?? null,
+      },
+      toolMetadata: {
+        packageManager: typeof packageJson.packageManager === 'string'
+          ? packageJson.packageManager
+          : 'npm',
+      },
       suggestedKind,
       evidence,
       capabilities,
@@ -190,7 +237,10 @@ export class PackageJsonProjectDetector {
   }
 }
 
-export const PROJECT_DETECTORS = [new PackageJsonProjectDetector()];
+export const PROJECT_DETECTORS = [
+  new PackageJsonProjectDetector(),
+  ...NON_NODE_PROJECT_DETECTORS,
+];
 
 export async function inspectProjectSource(rootPath, onProgress = () => undefined) {
   const canonicalRoot = await realpath(rootPath);
@@ -229,7 +279,10 @@ export async function inspectProjectSource(rootPath, onProgress = () => undefine
       warnings.push(`Sem acesso a ${directory}: ${error.message}`);
       return;
     }
-    if (entries.some((entry) => entry.name === 'package.json' && entry.isFile())) {
+    if (
+      entries.some((entry) => entry.name === 'package.json' && entry.isFile()) ||
+      directoryHasEcosystemMarker(entries)
+    ) {
       directories.push(directory);
     }
     if (
@@ -277,6 +330,12 @@ export async function inspectProjectSource(rootPath, onProgress = () => undefine
   });
   let projects = [];
   for (const [directoryIndex, directory] of directories.entries()) {
+    let entries = [];
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      // The detector will report an actionable warning below.
+    }
     report({
       phase: 'analyzing',
       percent: 72 + Math.floor(
@@ -292,8 +351,8 @@ export async function inspectProjectSource(rootPath, onProgress = () => undefine
     });
     for (const detector of PROJECT_DETECTORS) {
       try {
-        const detected = await detector.detect(directory, canonicalRoot);
-        if (!detected) break;
+        const detected = await detector.detect(directory, canonicalRoot, entries);
+        if (!detected) continue;
         projects.push({
           ...detected,
           absolutePath: directory,
@@ -304,7 +363,7 @@ export async function inspectProjectSource(rootPath, onProgress = () => undefine
         break;
       } catch (error) {
         warnings.push(`Projeto ignorado em ${directory}: ${error.message}`);
-        break;
+        continue;
       }
     }
     report({
@@ -336,7 +395,7 @@ export async function inspectProjectSource(rootPath, onProgress = () => undefine
     );
   }
   if (!projects.length) {
-    throw new Error('Nenhum projeto com package.json foi encontrado neste path.');
+    throw new Error('Nenhum projeto compatível foi encontrado neste path.');
   }
   const rootProject = projects.some((project) => project.relativePath === '.');
   const inspection = {
@@ -364,26 +423,47 @@ export function publicSourceInspection(inspection) {
     rootPath: inspection.rootPath,
     sourceType: inspection.sourceType,
     warnings: inspection.warnings,
-    projects: inspection.projects.map((project) => ({
-      name: project.name,
-      relativePath: project.relativePath,
-      technology: project.technology,
-      suggestedKind: project.suggestedKind,
-      evidence: project.evidence,
-      capabilities: project.capabilities,
-      scripts: Object.keys(project.scripts),
-      localLinkSuggestion: {
-        packageName: project.libraryPackageName ?? project.packageJson.name ?? project.name,
-        developmentScript: project.scripts.watch
-          ? 'watch'
-          : project.scripts.build ? 'build' : Object.keys(project.scripts)[0] ?? '',
-        artifactRelativePath:
-          project.libraryArtifactRelativePath ??
-          `dist/${project.name.replace(/^@[^/]+\//, '')}`,
-        preferredLinkScript:
-          `link:${project.name.replace(/^@[^/]+\//, '').replace(/-lib$/, '')}`,
-      },
-    })),
+    projects: inspection.projects.map((project) => {
+      const scripts = project.scripts ?? {};
+      const isNode = (project.ecosystem ?? 'node') === 'node';
+      return {
+        name: project.name,
+        relativePath: project.relativePath,
+        ecosystem: project.ecosystem ?? 'node',
+        technology: project.technology,
+        supportLevel: project.supportLevel ?? 'stable',
+        suggestedKind: project.suggestedKind,
+        evidence: project.evidence,
+        capabilities: project.capabilities,
+        scripts: Object.keys(scripts),
+        commands: project.commands ?? [],
+        defaultCommandId: project.defaultCommandId ?? null,
+        runtimeRequirements: project.runtimeRequirements ?? {},
+        toolMetadata: project.toolMetadata ?? {},
+        ...(isNode
+          ? {
+              localLinkSuggestion: {
+                packageName:
+                  project.libraryPackageName ??
+                  project.packageJson?.name ??
+                  project.name,
+                developmentScript: scripts.watch
+                  ? 'watch'
+                  : scripts.build
+                    ? 'build'
+                    : Object.keys(scripts)[0] ?? '',
+                artifactRelativePath:
+                  project.libraryArtifactRelativePath ??
+                  `dist/${project.name.replace(/^@[^/]+\//, '')}`,
+                preferredLinkScript:
+                  `link:${project.name
+                    .replace(/^@[^/]+\//, '')
+                    .replace(/-lib$/, '')}`,
+              },
+            }
+          : {}),
+      };
+    }),
   };
 }
 

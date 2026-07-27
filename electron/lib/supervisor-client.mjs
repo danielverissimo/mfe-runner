@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { readFile, rm } from 'node:fs/promises';
 import net from 'node:net';
 import {
   SUPERVISOR_PROTOCOL_VERSION,
@@ -138,7 +139,9 @@ export class SupervisorClient extends EventEmitter {
     try {
       return await this.#connect();
     } catch (firstError) {
-      if (firstError?.code === 'PROTOCOL_MISMATCH') throw firstError;
+      if (firstError?.code === 'PROTOCOL_MISMATCH') {
+        await this.#retireLegacySupervisor();
+      }
       this.#launchSupervisor();
       let lastError = firstError;
       for (const wait of CONNECT_RETRY_DELAYS) {
@@ -147,7 +150,10 @@ export class SupervisorClient extends EventEmitter {
           return await this.#connect();
         } catch (error) {
           lastError = error;
-          if (error?.code === 'PROTOCOL_MISMATCH') throw error;
+          if (error?.code === 'PROTOCOL_MISMATCH') {
+            await this.#retireLegacySupervisor();
+            this.#launchSupervisor();
+          }
         }
       }
       const detail = this.#launchError?.message ?? lastError.message;
@@ -155,6 +161,95 @@ export class SupervisorClient extends EventEmitter {
         `Não foi possível conectar ao supervisor local: ${detail}`,
       );
     }
+  }
+
+  async #retireLegacySupervisor() {
+    const paths = supervisorPaths(this.userDataPath, this.platform);
+    await this.#requestLegacyStopAll(paths.endpoint).catch(() => {});
+    let ownerPid;
+    try {
+      const lock = JSON.parse(await readFile(paths.lockPath, 'utf8'));
+      if (Number.isInteger(lock.pid) && lock.pid > 1 && lock.pid !== process.pid) {
+        ownerPid = lock.pid;
+      }
+    } catch {
+      // A ausência ou corrupção do lock será tratada pela limpeza conhecida.
+    }
+    if (ownerPid) {
+      try {
+        process.kill(ownerPid, 'SIGTERM');
+      } catch (error) {
+        if (error?.code !== 'ESRCH') throw error;
+      }
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        try {
+          process.kill(ownerPid, 0);
+          await delay(50);
+        } catch (error) {
+          if (error?.code === 'ESRCH') break;
+          if (error?.code === 'EPERM') break;
+          throw error;
+        }
+      }
+    }
+    if (this.platform !== 'win32') {
+      await rm(paths.endpoint, { force: true });
+    }
+    await rm(paths.lockPath, { force: true });
+    await rm(paths.tokenPath, { force: true });
+    this.#token = await ensureSupervisorToken(this.userDataPath);
+  }
+
+  #requestLegacyStopAll(endpoint) {
+    return new Promise((resolve, reject) => {
+      const socket = net.createConnection(endpoint);
+      const timer = setTimeout(() => {
+        socket.destroy();
+        reject(new Error('Timeout ao encerrar o supervisor anterior.'));
+      }, 2500);
+      let authenticated = false;
+      const finish = (error) => {
+        clearTimeout(timer);
+        socket.destroy();
+        error ? reject(error) : resolve();
+      };
+      socket.once('error', finish);
+      socket.once('connect', () => {
+        socket.write(encodeFrame({
+          type: 'handshake',
+          protocolVersion: 1,
+          token: this.#token,
+        }, SUPERVISOR_REQUEST_LIMIT));
+      });
+      socket.on('data', createFrameDecoder(
+        SUPERVISOR_RESPONSE_LIMIT,
+        (frame) => {
+          if (!authenticated) {
+            if (frame?.type !== 'handshake' || frame.protocolVersion !== 1) {
+              finish(new Error('Supervisor anterior não reconhecido.'));
+              return;
+            }
+            authenticated = true;
+            socket.write(encodeFrame({
+              type: 'request',
+              id: 'migration-stop-all',
+              method: 'stopAll',
+              payload: {},
+            }, SUPERVISOR_REQUEST_LIMIT));
+            return;
+          }
+          if (
+            frame?.type === 'response' &&
+            frame.id === 'migration-stop-all'
+          ) {
+            finish(frame.ok
+              ? undefined
+              : new Error(frame.error?.message ?? 'Falha ao parar processos.'));
+          }
+        },
+        finish,
+      ));
+    });
   }
 
   #launchSupervisor() {

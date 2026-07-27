@@ -6,6 +6,7 @@ import {
   ipcMain,
   Menu,
   net,
+  nativeTheme,
   protocol,
   shell as electronShell,
 } from 'electron';
@@ -28,6 +29,8 @@ import {
   validateProjectRequest,
   validateProjectOrderUpdate,
   validateProjectUpdate,
+  validateRuntimeComponentRequest,
+  validateRuntimePathPickerRequest,
   validateWorkspaceInput,
   validateWorkspaceRequest,
 } from './lib/contracts.mjs';
@@ -38,6 +41,7 @@ import {
   prepareSupervisorForUpdate,
 } from './lib/supervisor-exit-policy.mjs';
 import { listInstalledNodeVersions } from './lib/node-resolver.mjs';
+import { listRuntimeInstallations } from './lib/runtime-resolver.mjs';
 import { collectSystemInfo } from './lib/system-info.mjs';
 import {
   inspectExternalProcess,
@@ -99,6 +103,17 @@ const supervisor = new SupervisorClient({
   userDataPath,
   entryPath: path.join(currentDirectory, 'lib', 'supervisor-entry.mjs'),
 });
+
+function applyNativeTheme(theme) {
+  nativeTheme.themeSource = ['light', 'dark'].includes(theme)
+    ? theme
+    : 'system';
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(
+      nativeTheme.shouldUseDarkColors ? '#080b12' : '#f3f5fa',
+    );
+  }
+}
 const updateManager = new UpdateManager({
   updater: autoUpdater,
   appVersion: app.getVersion(),
@@ -108,6 +123,25 @@ const catalogs = new Map();
 let mainWindow = null;
 let quitAttemptInProgress = false;
 let quitAllowed = false;
+
+const RUNTIME_DOWNLOAD_URLS = Object.freeze({
+  'node:runtime': 'https://nodejs.org/en/download',
+  'node:packageManager': 'https://nodejs.org/en/download',
+  'java-maven:runtime': 'https://www.oracle.com/java/technologies/downloads/',
+  'java-maven:tool': 'https://maven.apache.org/download.cgi',
+  'java-gradle:runtime': 'https://www.oracle.com/java/technologies/downloads/',
+  'java-gradle:tool': 'https://gradle.org/install/',
+  'dotnet:runtime': 'https://dotnet.microsoft.com/en-us/download',
+  'python:runtime': 'https://www.python.org/downloads/',
+  'python:tool': 'https://packaging.python.org/en/latest/tutorials/installing-packages/',
+  'rust:runtime': 'https://www.rust-lang.org/tools/install',
+  'rust:tool': 'https://www.rust-lang.org/tools/install',
+  'go:runtime': 'https://go.dev/dl/',
+});
+
+function runtimePathUsesDirectory(ecosystem, component) {
+  return ecosystem.startsWith('java-') && component === 'runtime';
+}
 
 function validateSender(frame) {
   if (!frame?.url) return false;
@@ -247,6 +281,18 @@ function buildSnapshot() {
           scripts: {},
           scriptNames: [],
           defaultScript: null,
+          commands: [],
+          defaultCommandId: null,
+          ecosystem: 'node',
+          technology: 'Node.js',
+          supportLevel: 'stable',
+          runtime: {
+            available: false,
+            status: 'unavailable',
+            ecosystem: 'node',
+            components: {},
+            reason: 'O catálogo atual não contém este projeto.',
+          },
           port: record.port,
           federation: null,
           packageEngines: {},
@@ -302,7 +348,7 @@ async function refreshWorkspace(workspaceId) {
   try {
     catalogs.set(
       workspace.id,
-      await discoverWorkspace(workspace, config.settings.globalNodePolicy),
+      await discoverWorkspace(workspace, config.settings.executionPolicies),
     );
   } catch (error) {
     catalogs.set(workspace.id, {
@@ -430,12 +476,17 @@ async function restorePreviouslyActiveProjects(workspaceId, records) {
     const project = catalog.projects.find(
       (candidate) => candidate.id === record.projectId,
     );
-    if (!project?.defaultScript) continue;
+    if (!project?.defaultCommandId && !project?.defaultScript) continue;
     try {
       assertProjectNotActiveInAnotherWorkspace(workspaceId, project);
       await supervisor.start({
         workspace: catalog.workspace,
         project,
+        commandId:
+          record.commandId &&
+          project.commands?.some((command) => command.id === record.commandId)
+            ? record.commandId
+            : project.defaultCommandId,
         script:
           record.script && project.scripts[record.script]
             ? record.script
@@ -454,7 +505,8 @@ async function restorePreviouslyActiveProjects(workspaceId, records) {
 function workspaceChangedOperationally(current, input) {
   const roots = current.projectSources.map((source) => source.rootPath);
   return current.environment !== input.environment ||
-    JSON.stringify(current.nodePolicy) !== JSON.stringify(input.nodePolicy) ||
+    JSON.stringify(current.executionPolicies) !==
+      JSON.stringify(input.executionPolicies) ||
     roots.length !== input.projectSources.length ||
     roots.some((root, index) => root !== input.projectSources[index].rootPath);
 }
@@ -503,7 +555,9 @@ const roleOrder = new Map([
 
 function orderedExecutableProjects(catalog) {
   return catalog.projects
-    .filter((project) => project.defaultScript && project.role !== 'template')
+    .filter((project) =>
+      (project.defaultCommandId || project.defaultScript) &&
+      project.role !== 'template')
     .toSorted((left, right) =>
       (left.startupOrder ?? (roleOrder.get(left.role) ?? 3) * 100) -
       (right.startupOrder ?? (roleOrder.get(right.role) ?? 3) * 100));
@@ -549,6 +603,7 @@ async function startWorkspace(workspaceId) {
       await supervisor.start({
         workspace: catalog.workspace,
         project,
+        commandId: project.defaultCommandId,
         script: project.defaultScript,
       });
       await new Promise((resolve) => setTimeout(resolve, 350));
@@ -621,6 +676,53 @@ function registerIpcHandlers() {
   ipcMain.handle(
     IPC_CHANNELS.listNodeVersions,
     withValidatedSender(async () => listInstalledNodeVersions()),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.listRuntimeInstallations,
+    withValidatedSender(async (payload) =>
+      listRuntimeInstallations(validateRuntimeComponentRequest(payload))
+    ),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.chooseRuntimePath,
+    withValidatedSender(async (payload) => {
+      const request = validateRuntimePathPickerRequest(payload);
+      const directory = runtimePathUsesDirectory(
+        request.ecosystem,
+        request.component,
+      );
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: directory
+          ? 'Selecionar diretório do runtime'
+          : 'Selecionar executável',
+        properties: [directory ? 'openDirectory' : 'openFile'],
+        ...(request.initialPath ? { defaultPath: request.initialPath } : {}),
+      });
+      if (result.canceled) return null;
+      const selectedPath = await realpath(result.filePaths[0]);
+      const details = await stat(selectedPath);
+      if (directory ? !details.isDirectory() : !details.isFile()) {
+        throw new Error(
+          directory
+            ? 'Selecione um diretório válido.'
+            : 'Selecione um arquivo executável válido.',
+        );
+      }
+      return selectedPath;
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.openRuntimeDownload,
+    withValidatedSender(async (payload) => {
+      const request = validateRuntimeComponentRequest(payload);
+      const url = RUNTIME_DOWNLOAD_URLS[
+        `${request.ecosystem}:${request.component}`
+      ];
+      if (!url) {
+        throw new Error('Não há uma página oficial configurada para este item.');
+      }
+      await electronShell.openExternal(url);
+    }),
   );
   ipcMain.handle(
     IPC_CHANNELS.chooseProjectDirectory,
@@ -855,10 +957,16 @@ function registerIpcHandlers() {
     withValidatedSender(async (payload) => {
       const settings = assertPlainObject(payload, 'Configurações');
       await configStore.updateSettings(settings);
+      if (settings.theme !== undefined) {
+        applyNativeTheme(configStore.snapshot.settings.theme);
+      }
       if (settings.logLimit !== undefined) {
         await supervisor.setLogLimit(configStore.snapshot.settings.logLimit);
       }
-      if (settings.globalNodePolicy !== undefined) {
+      if (
+        settings.globalNodePolicy !== undefined ||
+        settings.executionPolicies !== undefined
+      ) {
         await refreshAllWorkspaces();
       }
       return buildSnapshot();
@@ -981,7 +1089,12 @@ function registerIpcHandlers() {
         request.projectId,
       );
       assertProjectNotActiveInAnotherWorkspace(request.workspaceId, project);
-      await supervisor.start({ workspace, project, script: request.script });
+      await supervisor.start({
+        workspace,
+        project,
+        commandId: request.commandId,
+        script: request.script,
+      });
       return buildSnapshot();
     }),
   );
@@ -1011,6 +1124,7 @@ function registerIpcHandlers() {
       await supervisor.start({
         workspace,
         project,
+        commandId: existing?.commandId ?? project.defaultCommandId,
         script: existing?.script ?? project.defaultScript,
       });
       return buildSnapshot();
@@ -1184,7 +1298,7 @@ async function createWindow() {
     height: 940,
     minWidth: 1080,
     minHeight: 720,
-    backgroundColor: '#080b12',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#080b12' : '#f3f5fa',
     title: APP_NAME,
     icon: APP_ICON_PATH,
     show: false,
@@ -1249,6 +1363,7 @@ if (!hasSingleInstanceLock) {
     registerApplicationMenu();
     updateManager.initialize();
     await configStore.load();
+    applyNativeTheme(configStore.snapshot.settings.theme);
     await supervisor.connectOrStart();
     await supervisor.setLogLimit(configStore.snapshot.settings.logLimit);
     await refreshAllWorkspaces();

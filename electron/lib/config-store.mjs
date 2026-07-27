@@ -9,15 +9,36 @@ import {
 import path from 'node:path';
 import {
   validateEnvironment,
+  validateExecutionPolicies,
+  validateHealthCheck,
   validateIdePreference,
   validateNodePolicy,
   validateWorkspaceInput,
 } from './contracts.mjs';
 
 export const DEFAULT_CONFIG = Object.freeze({
-  version: 5,
+  version: 6,
   settings: {
     globalNodePolicy: { mode: 'auto' },
+    executionPolicies: {
+      node: {
+        runtime: { mode: 'auto' },
+        packageManager: { mode: 'auto' },
+      },
+      'java-maven': {
+        runtime: { mode: 'auto' },
+        tool: { mode: 'auto' },
+      },
+      'java-gradle': {
+        runtime: { mode: 'auto' },
+        tool: { mode: 'auto' },
+      },
+      dotnet: { runtime: { mode: 'auto' } },
+      python: { runtime: { mode: 'auto' }, tool: { mode: 'auto' } },
+      rust: { runtime: { mode: 'auto' }, tool: { mode: 'auto' } },
+      go: { runtime: { mode: 'auto' } },
+    },
+    theme: 'system',
     stopProcessesOnExit: false,
     logLimit: 1500,
     ide: null,
@@ -27,6 +48,10 @@ export const DEFAULT_CONFIG = Object.freeze({
 
 function cloneDefaultConfig() {
   return structuredClone(DEFAULT_CONFIG);
+}
+
+function sanitizeTheme(value) {
+  return ['system', 'light', 'dark'].includes(value) ? value : 'system';
 }
 
 function sanitizeProjectOverrides(overrides) {
@@ -42,6 +67,20 @@ function sanitizeProjectOverrides(overrides) {
         const result = {};
         if (value.nodePolicy) {
           result.nodePolicy = validateNodePolicy(value.nodePolicy);
+        }
+        if (value.executionPolicies) {
+          result.executionPolicies = validateExecutionPolicies(
+            value.executionPolicies,
+          );
+        }
+        if (value.healthCheck) {
+          result.healthCheck = validateHealthCheck(value.healthCheck);
+        }
+        if (
+          typeof value.defaultCommandId === 'string' &&
+          value.defaultCommandId.trim()
+        ) {
+          result.defaultCommandId = value.defaultCommandId.trim();
         }
         if (
           typeof value.defaultScript === 'string' &&
@@ -167,6 +206,9 @@ function sanitizeWorkspace(value) {
       nodePolicy: validateNodePolicy(
         value.nodePolicy ?? { mode: 'inherit' },
       ),
+      executionPolicies: validateExecutionPolicies(
+        value.executionPolicies ?? {},
+      ),
       projectOverrides: sanitizeProjectOverrides(value.projectOverrides),
       projectOrder: sanitizeProjectOrder(value.projectOrder),
       excludedProjectIds: sanitizeExcludedProjectIds(
@@ -184,7 +226,7 @@ function sanitizeConfig(value) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    value.version !== 5
+    value.version !== 6
   ) {
     return base;
   }
@@ -194,6 +236,11 @@ function sanitizeConfig(value) {
       settings.globalNodePolicy ?? base.settings.globalNodePolicy,
       { allowInherit: false },
     ),
+    executionPolicies: validateExecutionPolicies(
+      settings.executionPolicies ?? base.settings.executionPolicies,
+      { allowInherit: false },
+    ),
+    theme: sanitizeTheme(settings.theme),
     stopProcessesOnExit:
       typeof settings.stopProcessesOnExit === 'boolean'
         ? settings.stopProcessesOnExit
@@ -209,6 +256,57 @@ function sanitizeConfig(value) {
   return base;
 }
 
+function migrateV5(value) {
+  const migrated = structuredClone(value);
+  migrated.version = 6;
+  migrated.settings ??= {};
+  migrated.settings.theme = sanitizeTheme(migrated.settings.theme);
+  const globalNodePolicy = validateNodePolicy(
+    migrated.settings.globalNodePolicy ?? { mode: 'auto' },
+    { allowInherit: false },
+  );
+  migrated.settings.executionPolicies = {
+    ...cloneDefaultConfig().settings.executionPolicies,
+    ...(migrated.settings.executionPolicies ?? {}),
+    node: {
+      ...cloneDefaultConfig().settings.executionPolicies.node,
+      ...(migrated.settings.executionPolicies?.node ?? {}),
+      runtime:
+        migrated.settings.executionPolicies?.node?.runtime ??
+        globalNodePolicy,
+    },
+  };
+  for (const workspace of migrated.workspaces ?? []) {
+    workspace.executionPolicies = {
+      ...(workspace.executionPolicies ?? {}),
+      node: {
+        ...(workspace.executionPolicies?.node ?? {}),
+        runtime:
+          workspace.executionPolicies?.node?.runtime ??
+          workspace.nodePolicy ??
+          { mode: 'inherit' },
+      },
+    };
+    for (const override of Object.values(workspace.projectOverrides ?? {})) {
+      if (override.nodePolicy) {
+        override.executionPolicies = {
+          ...(override.executionPolicies ?? {}),
+          node: {
+            ...(override.executionPolicies?.node ?? {}),
+            runtime:
+              override.executionPolicies?.node?.runtime ??
+              override.nodePolicy,
+          },
+        };
+      }
+      if (override.defaultScript && !override.defaultCommandId) {
+        override.defaultCommandId = `node:script:${override.defaultScript}`;
+      }
+    }
+  }
+  return sanitizeConfig(migrated);
+}
+
 function migrateV4(value) {
   const base = cloneDefaultConfig();
   const settings = value.settings ?? {};
@@ -217,6 +315,7 @@ function migrateV4(value) {
       settings.globalNodePolicy ?? base.settings.globalNodePolicy,
       { allowInherit: false },
     ),
+    theme: sanitizeTheme(settings.theme),
     stopProcessesOnExit:
       typeof settings.stopProcessesOnExit === 'boolean'
         ? settings.stopProcessesOnExit
@@ -279,6 +378,11 @@ function migrateV4(value) {
         projectSources,
         environment: workspace.environment ?? 'local',
         nodePolicy: workspace.nodePolicy ?? { mode: 'inherit' },
+        executionPolicies: {
+          node: {
+            runtime: workspace.nodePolicy ?? { mode: 'inherit' },
+          },
+        },
         projectOverrides: sanitizeProjectOverrides(workspace.projectOverrides),
         projectOrder: sanitizeProjectOrder(workspace.projectOrder),
         excludedProjectIds: sanitizeExcludedProjectIds(
@@ -312,9 +416,13 @@ export class ConfigStore {
       const parsed = JSON.parse(raw);
       if (parsed?.version === 4) {
         await this.#backupLegacyConfig('v4');
-        this.#config = migrateV4(parsed);
+        this.#config = migrateV5(migrateV4(parsed));
         await this.#save();
-      } else if (parsed?.version !== 5) {
+      } else if (parsed?.version === 5) {
+        await this.#backupLegacyConfig('v5');
+        this.#config = migrateV5(parsed);
+        await this.#save();
+      } else if (parsed?.version !== 6) {
         await this.#backupLegacyConfig(`v${parsed?.version ?? 'legacy'}`);
         this.#config = cloneDefaultConfig();
         await this.#save();
@@ -348,6 +456,7 @@ export class ConfigStore {
       }),
       environment: validated.environment,
       nodePolicy: validated.nodePolicy,
+      executionPolicies: validated.executionPolicies,
       projectOverrides: {},
       projectOrder: [],
       excludedProjectIds: [],
@@ -382,6 +491,7 @@ export class ConfigStore {
       }),
       environment: validated.environment,
       nodePolicy: validated.nodePolicy,
+      executionPolicies: validated.executionPolicies,
     };
     const validProjectIds = new Set(
       this.#config.workspaces[index].projectSources.flatMap((source) =>
@@ -441,10 +551,24 @@ export class ConfigStore {
         settings.globalNodePolicy,
         { allowInherit: false },
       );
+      this.#config.settings.executionPolicies.node.runtime =
+        this.#config.settings.globalNodePolicy;
+    }
+    if (settings.executionPolicies !== undefined) {
+      this.#config.settings.executionPolicies = validateExecutionPolicies(
+        settings.executionPolicies,
+        { allowInherit: false },
+      );
+      this.#config.settings.globalNodePolicy =
+        this.#config.settings.executionPolicies.node?.runtime ??
+        this.#config.settings.globalNodePolicy;
     }
     if (settings.stopProcessesOnExit !== undefined) {
       this.#config.settings.stopProcessesOnExit =
         settings.stopProcessesOnExit !== false;
+    }
+    if (settings.theme !== undefined) {
+      this.#config.settings.theme = sanitizeTheme(settings.theme);
     }
     if (settings.logLimit !== undefined && Number.isInteger(settings.logLimit)) {
       this.#config.settings.logLimit = Math.min(
@@ -464,6 +588,24 @@ export class ConfigStore {
     const override = workspace.projectOverrides[projectId] ?? {};
     if (input.nodePolicy !== undefined) {
       override.nodePolicy = validateNodePolicy(input.nodePolicy);
+    }
+    if (input.executionPolicies !== undefined) {
+      override.executionPolicies = validateExecutionPolicies(
+        input.executionPolicies,
+      );
+      override.nodePolicy =
+        override.executionPolicies.node?.runtime ??
+        override.nodePolicy;
+    }
+    if (input.healthCheck !== undefined) {
+      override.healthCheck = validateHealthCheck(input.healthCheck);
+    }
+    if (input.defaultCommandId !== undefined) {
+      if (input.defaultCommandId) {
+        override.defaultCommandId = input.defaultCommandId;
+      } else {
+        delete override.defaultCommandId;
+      }
     }
     if (input.defaultScript !== undefined) {
       if (input.defaultScript) {
@@ -542,4 +684,4 @@ export class ConfigStore {
   }
 }
 
-export const __test__ = { migrateV4, sanitizeConfig };
+export const __test__ = { migrateV4, migrateV5, sanitizeConfig };

@@ -4,12 +4,11 @@ MFE Runner is a cross-platform desktop control center for local development.
 It discovers, starts, stops, supervises, and diagnoses related applications
 from a single interface, without modifying their source files.
 
-Despite its name, MFE Runner is not limited to micro frontends. It can manage a
-standalone SPA, a monolith, a backend or frontend application, a shared
-library, or a workspace composed of a shell and multiple micro frontends. Any
-project with scripts declared in `package.json` can benefit from centralized
-process control, Node.js resolution, logs, Git context, and development
-shortcuts.
+Despite its name, MFE Runner is not limited to micro frontends or JavaScript.
+It can manage a standalone SPA, a monolith, a backend or frontend application,
+a shared library, or a mixed-language workspace. Node.js support is stable;
+Java/Maven, Java/Gradle, .NET, Python, Rust, and Go are available as Beta
+integrations while their cross-platform coverage continues to grow.
 
 [Website](https://mferunner.com/) ·
 [Downloads](https://github.com/danielverissimo/mfe-runner/releases) ·
@@ -36,8 +35,8 @@ through the download selector.
 - Consolidated logs with project filters, text or regular-expression search,
   severity filters, bookmarks, pause/follow modes, error navigation, and
   sanitized diagnostic exports.
-- Node.js selection at global, workspace, and project level, including `.nvmrc`
-  detection and installed NVM versions.
+- Runtime and tool policies at global, workspace, and project level, with
+  automatic or explicit local installation selection.
 - Read-only Git context with branch, commit, dirty state, and local
   ahead/behind information.
 - Safe shortcuts for opening a project in an IDE, terminal, file manager, or
@@ -61,6 +60,24 @@ Download the recommended installer for your platform from
 > The Windows `ia32` build is a legacy compatibility edition. Electron 43 is
 > the last Electron series that provides Windows `ia32` binaries.
 
+## Ecosystem support
+
+| Ecosystem | Level | Detection and commands |
+| --- | --- | --- |
+| Node.js | Stable | `package.json`, `.nvmrc`, npm scripts, NVM, local-library `link:*` |
+| Java / Maven | Beta | `pom.xml`, modules, Maven Wrapper, Spring Boot, Quarkus, test/package |
+| Java / Gradle | Beta | Groovy/Kotlin DSL, multiproject builds, Gradle Wrapper, run/bootRun/Quarkus |
+| .NET | Beta | `.sln`, `.csproj`, `global.json`, run/test/build |
+| Python | Beta | `pyproject.toml`, requirements, Pipfile, Poetry, uv, common web frameworks |
+| Rust | Beta | Cargo projects/workspaces, rust-toolchain, run/test/build |
+| Go | Beta | `go.mod`, `go.work`, run/test/build with toolchain downloads disabled |
+
+Beta integrations are intentionally conservative: discovery is static, missing
+or incompatible runtimes are reported instead of installed, and ambiguous
+entry points require a reviewed command. Contributions with fixtures,
+cross-platform tests, detector refinements, and runtime-resolution fixes are
+especially welcome.
+
 ## How it works
 
 1. Create a workspace and add one or more paths. Each path may point to an
@@ -74,18 +91,22 @@ Download the recommended installer for your platform from
 4. Arrange the catalog in the order that best matches your workflow. The visual
    order is stored per workspace and remains independent from process startup
    order.
-5. All confirmed projects appear in one catalog. MFE Runner reads
-   `package.json`, optional Angular/federation metadata, ports, and `.nvmrc`
-   files without editing them.
-6. Only scripts already declared in a project's `package.json` may be
-   executed. `start` is preferred on first discovery when available.
+5. All confirmed projects appear in one technology-independent catalog.
+   Ecosystem adapters read only bounded build metadata and never execute a
+   build, plugin, task, or project script during discovery.
+6. Commands come from an allowlisted structured profile created by the
+   authoritative adapter. The renderer sends only workspace, project, and
+   command IDs.
 7. Runtime state, logs, health information, and private overrides remain in
    MFE Runner's own user-data directory.
 
-The private configuration format is currently version 5 and stores unified
-`projectSources[]` inside `workspaces[]`. Version 4 configurations are backed
-up and migrated automatically, preserving stable project IDs, overrides,
-exclusions, visual order, and local-library link settings.
+The private configuration format is version 6. It stores unified
+`projectSources[]`, generic `executionPolicies`, command IDs, health checks,
+and per-project overrides. Previous configurations are backed up and migrated
+automatically, preserving workspaces, stable project IDs, classifications,
+exclusions, visual order, and Node local-library link settings. Supervisor
+protocol v2 intentionally discards processes and logs owned by the obsolete
+protocol during the migration; project files are unaffected.
 
 Rediscovery is review-first: new, unchanged, and missing projects are shown
 before the catalog is changed. Canceling the review leaves the active catalog
@@ -119,7 +140,23 @@ its directory. Removing a complete workspace first stops its managed processes
 and then deletes only the private MFE Runner configuration. Source files,
 repositories, dependencies, and project-owned links are never removed.
 
-## Node.js resolution
+## Runtime and tool resolution
+
+Every ecosystem uses the same precedence:
+
+```text
+project → workspace → global settings
+```
+
+Policies select `auto`, `explicit`, or inheritance where applicable. Runtime
+and build/package tools are resolved separately. An explicitly selected
+installation is never silently replaced. An unavailable or incompatible
+runtime blocks execution; warnings remain visible and can be reviewed.
+
+MFE Runner never installs runtimes, SDKs, wrappers, package managers, or
+toolchains.
+
+### Node.js
 
 Each project, workspace, and global setting supports inherited, automatic, or
 explicit Node.js selection:
@@ -136,14 +173,28 @@ executables directly and never constructs a free-form `nvm use` shell command.
 A missing requested version blocks the process with a diagnostic message.
 MFE Runner never installs Node.js automatically.
 
+### Java
+
+JDK resolution considers Gradle toolchains, Maven release/source/target,
+SDKMAN and `.java-version` hints, `JAVA_HOME`, known JDK directories, and
+`PATH`. Maven and Gradle prefer project wrappers, but an explicit global,
+workspace, or project policy can select an installed tool instead. No
+dependency resolution or build task runs during scanning.
+
 ## Safety principles
 
 - The Electron renderer is sandboxed with context isolation and no Node.js
   integration.
 - The preload exposes a small allowlisted API and the main process validates
   senders and payloads.
-- Project scripts are launched with argument arrays and `shell: false`.
-- Only scripts declared in `package.json` are eligible for execution.
+- Commands are launched from structured `LaunchSpecification` values with
+  argument arrays and `shell: false`.
+- Executables and arguments are reconstructed by the authoritative ecosystem
+  adapter; the renderer cannot provide either.
+- XML and TOML metadata are bounded before parsing; XML entity expansion is
+  disabled.
+- Discovery performs no network access and executes no builds, Gradle tasks,
+  Maven plugins, wrappers, or project scripts.
 - Native project actions resolve their paths again in the main process.
 - Git inspection is read-only and uses local references.
 - Known sensitive fields are redacted from displayed and exported logs.
@@ -162,6 +213,8 @@ project-owned `link:*` script performs, normally inside `node_modules`.
 - npm `>=10` (npm 11 recommended);
 - Chrome or Chromium available for Angular headless tests;
 - NVM is optional, but recommended for testing Node.js version resolution.
+- Install only the runtimes/tools needed for the ecosystem adapters you intend
+  to exercise. The Runner will not install them for you.
 
 Install dependencies and start the packaged development build:
 
@@ -191,6 +244,7 @@ More detailed documentation:
 
 - [User guide](docs/USER_GUIDE.md)
 - [Architecture and security boundaries](docs/ARCHITECTURE.md)
+- [Multi-ecosystem implementation plan](docs/MULTI_ECOSYSTEM_SUPPORT_PLAN.md)
 - [Security policy](SECURITY.md)
 - [Landing-page and release operations](docker-server/README.md)
 
@@ -213,9 +267,10 @@ npm run test:angular
 
 ## Contributing
 
-Contributions are welcome. Bug fixes, tests, documentation, translations,
-accessibility improvements, platform compatibility fixes, and focused UX
-improvements are especially useful.
+Contributions are welcome. Beta adapter fixtures and tests on macOS, Windows,
+and Linux are a current priority, alongside detector improvements, runtime
+compatibility fixes, documentation, translations, accessibility, and focused
+UX improvements.
 
 ### Contribution workflow
 

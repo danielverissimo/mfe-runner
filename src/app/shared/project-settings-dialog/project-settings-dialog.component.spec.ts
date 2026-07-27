@@ -33,7 +33,7 @@ describe('ProjectSettingsDialogComponent', () => {
 
     expect(text).toContain(projectFixture.displayName);
     expect(text).toContain('Comando padrão');
-    expect(text).toContain('Política de Node');
+    expect(text).toContain('Runtime Node.js');
     expect(text).toContain('Ordem de inicialização');
     expect(text).toContain('Nenhum arquivo do projeto será alterado');
   });
@@ -41,16 +41,26 @@ describe('ProjectSettingsDialogComponent', () => {
   it('emits the command and explicit Node version selected for the project', () => {
     spyOn(fixture.componentInstance.saveSettings, 'emit');
     fixture.componentInstance.defaultScript = 'start';
-    fixture.componentInstance.nodeMode = 'explicit';
+    fixture.componentInstance.runtimeMode = 'explicit';
     fixture.componentInstance.nodeVersion = '22.12.0';
 
     fixture.componentInstance.submit();
 
     expect(fixture.componentInstance.saveSettings.emit).toHaveBeenCalledWith({
+      defaultCommandId: 'node:script:start',
       defaultScript: 'start',
       nodePolicy: { mode: 'explicit', version: '22.12.0' },
+      executionPolicies: {
+        node: {
+          runtime: { mode: 'explicit', version: '22.12.0' },
+        },
+      },
       libraryLinkScripts: {},
       startupOrder: projectFixture.startupOrder,
+      healthCheck: {
+        type: 'tcp',
+        port: projectFixture.port!,
+      },
     });
   });
 
@@ -58,18 +68,23 @@ describe('ProjectSettingsDialogComponent', () => {
     fixture.componentRef.setInput('workspace', {
       ...snapshotFixture.workspaces[0].workspace,
       projectOverrides: {
-        [projectFixture.id]: { defaultScript: 'test' },
+        [projectFixture.id]: {
+          defaultCommandId: 'node:script:test',
+          defaultScript: 'test',
+        },
       },
     });
     fixture.detectChanges();
 
     const commandSelect: HTMLSelectElement =
-      fixture.nativeElement.querySelector('select[name="defaultScript"]');
+      fixture.nativeElement.querySelector('select[name="defaultCommandId"]');
 
     expect(fixture.componentInstance.defaultScript).toBe('test');
+    expect(fixture.componentInstance.defaultCommandId)
+      .toBe('node:script:test');
     expect(commandSelect.disabled).toBeFalse();
     expect(fixture.nativeElement.textContent).toContain(
-      'npm run start` é priorizado',
+      'comando foi descoberto estaticamente pelo adaptador Node.js',
     );
   });
 

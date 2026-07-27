@@ -4,6 +4,7 @@ import {
   validateClipboardWriteRequest,
   validateDiagnosticExportRequest,
   validateDirectoryPickerRequest,
+  validateHealthCheck,
   validateIdePreference,
   validateLibraryLinkRequest,
   validateLocalAddressRequest,
@@ -12,8 +13,45 @@ import {
   validateProjectOrderUpdate,
   validateProjectRequest,
   validateProjectSourceInspectionRequest,
+  validateProjectUpdate,
+  validateRuntimeComponentRequest,
+  validateRuntimePathPickerRequest,
   validateWorkspaceInput,
 } from './contracts.mjs';
+
+test('runtime selectors accept only allowlisted ecosystems and components', () => {
+  assert.deepEqual(validateRuntimeComponentRequest({
+    ecosystem: 'java-maven',
+    component: 'runtime',
+    url: 'https://attacker.invalid',
+  }), {
+    ecosystem: 'java-maven',
+    component: 'runtime',
+  });
+  assert.deepEqual(validateRuntimePathPickerRequest({
+    ecosystem: 'go',
+    component: 'runtime',
+    initialPath: '/usr/local/go/bin/go',
+  }), {
+    ecosystem: 'go',
+    component: 'runtime',
+    initialPath: '/usr/local/go/bin/go',
+  });
+  assert.throws(
+    () => validateRuntimeComponentRequest({
+      ecosystem: 'custom',
+      component: 'runtime',
+    }),
+    /Ecossistema não suportado/,
+  );
+  assert.throws(
+    () => validateRuntimeComponentRequest({
+      ecosystem: 'python',
+      component: 'command',
+    }),
+    /Componente não suportado/,
+  );
+});
 
 test('directory picker accepts only an optional bounded initial path', () => {
   assert.deepEqual(
@@ -261,4 +299,59 @@ test('bounds diagnostic entry selections and defaults to sanitized paths', () =>
     }),
     /Seleção de logs inválida/,
   );
+});
+
+test('validates structured process, TCP and HTTP health checks', () => {
+  assert.deepEqual(validateHealthCheck({ type: 'process' }), {
+    type: 'process',
+  });
+  assert.deepEqual(validateHealthCheck({ type: 'tcp', port: 4310 }), {
+    type: 'tcp',
+    port: 4310,
+  });
+  assert.deepEqual(validateHealthCheck({
+    type: 'http',
+    port: '8080',
+    path: '/actuator/health',
+  }), {
+    type: 'http',
+    port: 8080,
+    path: '/actuator/health',
+  });
+});
+
+test('rejects unsafe or incomplete health checks', () => {
+  assert.throws(
+    () => validateHealthCheck({ type: 'http', path: '/health' }),
+    /porta/i,
+  );
+  assert.throws(
+    () => validateHealthCheck({ type: 'http', port: 8080, path: '//host' }),
+    /path HTTP/i,
+  );
+  assert.throws(
+    () => validateHealthCheck({ type: 'command', port: 8080 }),
+    /não suportado/i,
+  );
+});
+
+test('project updates preserve only validated health-check fields', () => {
+  assert.deepEqual(validateProjectUpdate({
+    workspaceId: 'workspace',
+    projectId: 'project',
+    healthCheck: {
+      type: 'http',
+      port: 8080,
+      path: '/ready',
+      command: 'curl example.test',
+    },
+  }), {
+    workspaceId: 'workspace',
+    projectId: 'project',
+    healthCheck: {
+      type: 'http',
+      port: 8080,
+      path: '/ready',
+    },
+  });
 });

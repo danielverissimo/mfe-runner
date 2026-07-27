@@ -173,3 +173,100 @@ test('ignores dependency and output directories while scanning', async () => {
     ['app'],
   );
 });
+
+test('detects a Spring Boot Maven project and its Java requirement', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-detector-maven-'));
+  await writeFile(path.join(root, 'pom.xml'), `<?xml version="1.0"?>
+    <project>
+      <modelVersion>4.0.0</modelVersion>
+      <groupId>com.example</groupId>
+      <artifactId>orders-api</artifactId>
+      <version>1.0.0</version>
+      <properties><java.version>21</java.version></properties>
+      <build><plugins><plugin>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin></plugins></build>
+    </project>`);
+  await writeFile(path.join(root, 'mvnw'), '#!/bin/sh\n');
+
+  const inspection = publicSourceInspection(await inspectProjectSource(root));
+  const project = inspection.projects[0];
+
+  assert.equal(project.ecosystem, 'java-maven');
+  assert.equal(project.supportLevel, 'beta');
+  assert.equal(project.name, 'orders-api');
+  assert.equal(project.defaultCommandId, 'java-maven:spring-boot-run');
+  assert.equal(project.runtimeRequirements.java, '21');
+  assert.ok(project.commands.some((item) => item.id === 'java-maven:test'));
+  assert.match(project.evidence.join(' '), /Spring Boot/);
+});
+
+test('detects a multi-project Gradle Kotlin build without running Gradle', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-detector-gradle-'));
+  await writeFile(
+    path.join(root, 'settings.gradle.kts'),
+    `rootProject.name = "billing"\ninclude("api", "domain")\n`,
+  );
+  await writeFile(
+    path.join(root, 'build.gradle.kts'),
+    `plugins { id("org.springframework.boot") version "3.5.0" }
+     java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }`,
+  );
+  await writeFile(path.join(root, 'gradlew'), '#!/bin/sh\n');
+
+  const inspection = publicSourceInspection(await inspectProjectSource(root));
+  const project = inspection.projects[0];
+
+  assert.equal(project.ecosystem, 'java-gradle');
+  assert.equal(project.supportLevel, 'beta');
+  assert.equal(project.name, 'billing');
+  assert.equal(project.defaultCommandId, 'java-gradle:boot-run');
+  assert.equal(project.runtimeRequirements.java, '21');
+  assert.deepEqual(project.toolMetadata.modules, ['api', 'domain']);
+});
+
+test('detects .NET, Python, Rust and Go projects as beta ecosystems', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-detector-mixed-'));
+  const dotnet = path.join(root, 'dotnet-api');
+  const python = path.join(root, 'python-api');
+  const rust = path.join(root, 'rust-cli');
+  const go = path.join(root, 'go-api');
+  await Promise.all([dotnet, python, rust, go].map((directory) =>
+    mkdir(directory, { recursive: true })
+  ));
+  await writeFile(path.join(dotnet, 'Api.csproj'), '<Project />');
+  await writeFile(
+    path.join(dotnet, 'global.json'),
+    JSON.stringify({ sdk: { version: '9.0.100' } }),
+  );
+  await writeFile(
+    path.join(python, 'pyproject.toml'),
+    `[project]\nname = "python-api"\nrequires-python = ">=3.12"\ndependencies = ["fastapi"]\n`,
+  );
+  await writeFile(
+    path.join(rust, 'Cargo.toml'),
+    `[package]\nname = "rust-cli"\nversion = "0.1.0"\n`,
+  );
+  await writeFile(
+    path.join(go, 'go.mod'),
+    'module example.com/go-api\ngo 1.24\n',
+  );
+
+  const inspection = publicSourceInspection(await inspectProjectSource(root));
+  const projects = new Map(inspection.projects.map((item) => [
+    item.ecosystem,
+    item,
+  ]));
+
+  assert.deepEqual(
+    [...projects.keys()].sort(),
+    ['dotnet', 'go', 'python', 'rust'],
+  );
+  assert.ok([...projects.values()].every(
+    (project) => project.supportLevel === 'beta',
+  ));
+  assert.equal(projects.get('dotnet').runtimeRequirements.dotnet, '9.0.100');
+  assert.equal(projects.get('python').defaultCommandId, 'python:fastapi');
+  assert.equal(projects.get('rust').defaultCommandId, 'rust:run');
+  assert.equal(projects.get('go').defaultCommandId, 'go:run');
+});

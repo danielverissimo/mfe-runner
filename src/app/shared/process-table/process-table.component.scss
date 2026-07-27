@@ -472,6 +472,21 @@ code {
   text-align: center;
 }
 
+.beta-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid rgb(255 189 89 / 35%);
+  border-radius: 999px;
+  color: #ffd083;
+  background: rgb(255 189 89 / 10%);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
 .sr-only {
   position: absolute;
   overflow: hidden;

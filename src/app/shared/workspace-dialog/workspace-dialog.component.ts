@@ -12,6 +12,9 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
+  Ecosystem,
+  ExecutionPolicies,
+  ExecutionPolicyMode,
   LocalLibraryLinkConfig,
   NodePolicyMode,
   NodeVersionCatalog,
@@ -28,6 +31,8 @@ interface EditableProject {
   name: string;
   relativePath: string;
   technology: string;
+  ecosystem: Ecosystem;
+  supportLevel: 'stable' | 'beta';
   evidence: string[];
   capabilities: string[];
   scripts: string[];
@@ -75,6 +80,7 @@ export class WorkspaceDialogComponent implements OnChanges {
   environment: RunnerEnvironment = 'local';
   nodeMode: NodePolicyMode = 'inherit';
   nodeVersion = '';
+  executionPolicies: ExecutionPolicies = {};
   missingProjects: Array<{
     projectId: string;
     name: string;
@@ -168,6 +174,8 @@ export class WorkspaceDialogComponent implements OnChanges {
           name: candidate.name,
           relativePath: candidate.relativePath,
           technology: candidate.technology,
+          ecosystem: candidate.ecosystem,
+          supportLevel: candidate.supportLevel,
           evidence: candidate.evidence,
           capabilities: candidate.capabilities,
           scripts: candidate.scripts,
@@ -264,6 +272,20 @@ export class WorkspaceDialogComponent implements OnChanges {
   }
 
   valid(): boolean {
+    const explicitPoliciesValid = this.detectedEcosystems().every(
+      (ecosystem) => {
+        const policy = this.executionPolicies[ecosystem];
+        const runtimeValid =
+          policy?.runtime?.mode !== 'explicit' ||
+          ecosystem === 'node' ||
+          !!policy.runtime.path?.trim();
+        const toolValid =
+          !ecosystem.startsWith('java-') ||
+          policy?.tool?.mode !== 'explicit' ||
+          !!policy.tool.path?.trim();
+        return runtimeValid && toolValid;
+      },
+    );
     return !!this.name.trim() &&
       this.sources.length > 0 &&
       this.sources.every((source) =>
@@ -279,7 +301,86 @@ export class WorkspaceDialogComponent implements OnChanges {
               project.localLink.preferredLinkScript.startsWith('link:')))
         )
       ) &&
-      (this.nodeMode !== 'explicit' || !!this.nodeVersion.trim());
+      (this.nodeMode !== 'explicit' || !!this.nodeVersion.trim()) &&
+      explicitPoliciesValid;
+  }
+
+  detectedEcosystems(): Ecosystem[] {
+    return [...new Set(this.sources.flatMap((source) =>
+      source.projects.map((project) => project.ecosystem)
+    ))];
+  }
+
+  ecosystemLabel(ecosystem: Ecosystem): string {
+    return {
+      node: 'Node.js',
+      'java-maven': 'Java / Maven',
+      'java-gradle': 'Java / Gradle',
+      dotnet: '.NET',
+      python: 'Python',
+      rust: 'Rust',
+      go: 'Go',
+    }[ecosystem];
+  }
+
+  policyMode(
+    ecosystem: Ecosystem,
+    component: 'runtime' | 'tool',
+  ): ExecutionPolicyMode {
+    return this.executionPolicies[ecosystem]?.[component]?.mode ?? 'inherit';
+  }
+
+  policyPath(
+    ecosystem: Ecosystem,
+    component: 'runtime' | 'tool',
+  ): string {
+    return this.executionPolicies[ecosystem]?.[component]?.path ?? '';
+  }
+
+  setPolicyMode(
+    ecosystem: Ecosystem,
+    component: 'runtime' | 'tool',
+    mode: ExecutionPolicyMode,
+  ): void {
+    const current = this.executionPolicies[ecosystem]?.[component];
+    this.executionPolicies = {
+      ...this.executionPolicies,
+      [ecosystem]: {
+        ...(this.executionPolicies[ecosystem] ?? {}),
+        [component]: {
+          mode,
+          ...(mode === 'explicit' && current?.path
+            ? { path: current.path }
+            : {}),
+          ...(ecosystem === 'node' &&
+              component === 'runtime' &&
+              mode === 'explicit' &&
+              this.nodeVersion.trim()
+            ? { version: this.nodeVersion.trim() }
+            : {}),
+        },
+      },
+    };
+    if (ecosystem === 'node' && component === 'runtime') {
+      this.nodeMode = mode;
+    }
+  }
+
+  setPolicyPath(
+    ecosystem: Ecosystem,
+    component: 'runtime' | 'tool',
+    path: string,
+  ): void {
+    this.executionPolicies = {
+      ...this.executionPolicies,
+      [ecosystem]: {
+        ...(this.executionPolicies[ecosystem] ?? {}),
+        [component]: {
+          mode: 'explicit',
+          path,
+        },
+      },
+    };
   }
 
   submit(): void {
@@ -312,6 +413,18 @@ export class WorkspaceDialogComponent implements OnChanges {
           ? { version: this.nodeVersion.trim() }
           : {}),
       },
+      executionPolicies: {
+        ...this.executionPolicies,
+        node: {
+          ...(this.executionPolicies.node ?? {}),
+          runtime: {
+            mode: this.nodeMode,
+            ...(this.nodeMode === 'explicit'
+              ? { version: this.nodeVersion.trim() }
+              : {}),
+          },
+        },
+      },
     });
   }
 
@@ -331,6 +444,8 @@ export class WorkspaceDialogComponent implements OnChanges {
         name: this.pathName(project.relativePath === '.' ? source.rootPath : project.relativePath),
         relativePath: project.relativePath,
         technology: 'Node.js',
+        ecosystem: 'node',
+        supportLevel: 'stable',
         evidence: [],
         capabilities: [],
         scripts: [],
@@ -355,6 +470,9 @@ export class WorkspaceDialogComponent implements OnChanges {
     this.environment = workspace?.environment ?? 'local';
     this.nodeMode = workspace?.nodePolicy.mode ?? 'inherit';
     this.nodeVersion = workspace?.nodePolicy.version ?? '';
+    this.executionPolicies = structuredClone(
+      workspace?.executionPolicies ?? {},
+    );
     this.missingProjects = [];
   }
 

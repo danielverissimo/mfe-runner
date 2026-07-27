@@ -364,6 +364,165 @@ describe('AppComponent workspace experience', () => {
       .toContain('continuarão executando');
   });
 
+  it('persists and immediately applies the selected appearance theme', async () => {
+    fixture.componentInstance.selectSection('settings');
+    const updateSettings = window.runnerApi?.updateSettings as jasmine.Spy;
+    updateSettings.and.callFake(async (input) => ({
+      ...snapshotFixture,
+      config: {
+        ...snapshotFixture.config,
+        settings: {
+          ...snapshotFixture.config.settings,
+          ...input,
+        },
+      },
+    }));
+    fixture.detectChanges();
+    const lightTheme: HTMLInputElement =
+      fixture.nativeElement.querySelector('input[value="light"]');
+
+    lightTheme.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(updateSettings).toHaveBeenCalledWith({ theme: 'light' });
+    expect(document.documentElement.dataset['theme']).toBe('light');
+    expect(document.documentElement.dataset['themePreference']).toBe('light');
+    expect(document.body.dataset['theme']).toBe('light');
+    expect(document.body.dataset['themePreference']).toBe('light');
+    expect(fixture.componentInstance.effectiveTheme()).toBe('light');
+    expect(fixture.nativeElement.querySelector('.app-shell--light')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.app-shell[data-theme="light"]'),
+    ).not.toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.theme-option').length).toBe(3);
+    expect(
+      fixture.nativeElement.querySelector(
+        '.theme-option.active .theme-option__check',
+      )?.textContent,
+    ).toContain('✓');
+    const themeOptions: HTMLElement =
+      fixture.nativeElement.querySelector('.theme-options');
+    const selectedOption: HTMLElement =
+      fixture.nativeElement.querySelector('.theme-option.active');
+    const selectedInput: HTMLInputElement =
+      selectedOption.querySelector('.theme-option__input')!;
+    expect(getComputedStyle(themeOptions).display).toBe('grid');
+    expect(getComputedStyle(themeOptions).borderTopWidth).toBe('0px');
+    expect(getComputedStyle(selectedOption).display).toBe('grid');
+    expect(getComputedStyle(selectedInput).position).toBe('absolute');
+    expect(getComputedStyle(selectedInput).opacity).toBe('0');
+    expect(getComputedStyle(selectedOption).borderRadius).toBe('12px');
+    expect(getComputedStyle(document.body).backgroundColor)
+      .toBe('rgb(243, 245, 250)');
+    expect(fixture.componentInstance.runner.notice()).toBe('Tema atualizado.');
+  });
+
+  it('waits for an executable before persisting an explicit runtime policy', async () => {
+    fixture.componentInstance.selectSection('settings');
+    const updateSettings = window.runnerApi?.updateSettings as jasmine.Spy;
+    updateSettings.calls.reset();
+
+    await fixture.componentInstance.updateGlobalExecutionMode(
+      'java-maven',
+      'runtime',
+      { target: { value: 'explicit' } } as unknown as Event,
+    );
+    fixture.detectChanges();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(
+      fixture.componentInstance.globalExecutionMode(
+        'java-maven',
+        'runtime',
+      ),
+    ).toBe('explicit');
+    expect(fixture.nativeElement.querySelector(
+      '.runtime-card:nth-of-type(2) .runtime-component__explicit',
+    )).not.toBeNull();
+
+    fixture.componentInstance.updateGlobalPolicyDraft(
+      'java-maven',
+      'runtime',
+      '/opt/jdk-21',
+    );
+    await fixture.componentInstance.saveGlobalExecutionPath(
+      'java-maven',
+      'runtime',
+    );
+
+    expect(updateSettings).toHaveBeenCalledOnceWith({
+      executionPolicies: {
+        node: { runtime: { mode: 'auto' } },
+        'java-maven': {
+          runtime: { mode: 'explicit', path: '/opt/jdk-21' },
+        },
+      },
+    });
+    expect(fixture.componentInstance.runner.error()).toBeNull();
+  });
+
+  it('persists automatic runtime detection immediately', async () => {
+    const updateSettings = window.runnerApi?.updateSettings as jasmine.Spy;
+    updateSettings.calls.reset();
+    fixture.componentInstance.pendingExplicitPolicies.set({
+      'python:runtime': true,
+    });
+
+    await fixture.componentInstance.updateGlobalExecutionMode(
+      'python',
+      'runtime',
+      { target: { value: 'auto' } } as unknown as Event,
+    );
+
+    expect(updateSettings).toHaveBeenCalledOnceWith({
+      executionPolicies: {
+        node: { runtime: { mode: 'auto' } },
+        python: { runtime: { mode: 'auto' } },
+      },
+    });
+    expect(
+      fixture.componentInstance.globalExecutionMode('python', 'runtime'),
+    ).toBe('auto');
+  });
+
+  it('detects installed runtimes and accepts a native path selection', async () => {
+    fixture.componentInstance.selectSection('settings');
+    await fixture.componentInstance.updateGlobalExecutionMode(
+      'java-maven',
+      'runtime',
+      { target: { value: 'explicit' } } as unknown as Event,
+    );
+
+    expect(window.runnerApi?.listRuntimeInstallations).toHaveBeenCalledWith({
+      ecosystem: 'java-maven',
+      component: 'runtime',
+    });
+    expect(
+      fixture.componentInstance.runner.runtimeInstallationCatalog(
+        'java-maven',
+        'runtime',
+      ).installations[0].version,
+    ).toBe('21.0.1');
+
+    await fixture.componentInstance.browseRuntimePath(
+      'java-maven',
+      'runtime',
+    );
+
+    expect(window.runnerApi?.chooseRuntimePath).toHaveBeenCalledWith({
+      ecosystem: 'java-maven',
+      component: 'runtime',
+      initialPath: undefined,
+    });
+    expect(
+      fixture.componentInstance.globalPolicyDraft(
+        'java-maven',
+        'runtime',
+      ),
+    ).toBe('/opt/runtime/bin/tool');
+  });
+
   it('configures the process log limit and removes the write-boundary card', async () => {
     fixture.componentInstance.selectSection('settings');
     fixture.detectChanges();

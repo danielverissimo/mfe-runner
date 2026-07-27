@@ -1,6 +1,37 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { WorkspaceDialogComponent } from './workspace-dialog.component';
 import { snapshotFixture } from '../../../testing/runner-fixtures';
+import {
+  DetectedProjectCandidate,
+} from '../../core/models/runner.models';
+
+function candidate(
+  overrides: Partial<DetectedProjectCandidate> = {},
+): DetectedProjectCandidate {
+  return {
+    name: 'app',
+    relativePath: '.',
+    technology: 'Node.js',
+    ecosystem: 'node',
+    supportLevel: 'stable',
+    commands: [{
+      id: 'node:script:start',
+      label: 'npm run start',
+      category: 'run',
+      longRunning: true,
+      task: 'start',
+      args: [],
+    }],
+    defaultCommandId: 'node:script:start',
+    runtimeRequirements: {},
+    suggestedKind: 'project',
+    evidence: ['package.json'],
+    capabilities: [],
+    scripts: ['start'],
+    localLinkSuggestion: null,
+    ...overrides,
+  };
+}
 
 describe('WorkspaceDialogComponent', () => {
   let fixture: ComponentFixture<WorkspaceDialogComponent>;
@@ -28,18 +59,47 @@ describe('WorkspaceDialogComponent', () => {
       rootPath: '/workspace/app',
       sourceType: 'project',
       warnings: [],
-      projects: [{
+      projects: [candidate({
         name: 'app',
-        relativePath: '.',
-        technology: 'Node.js',
-        suggestedKind: 'project',
         evidence: ['package.json', 'Script executável'],
-        capabilities: [],
-        scripts: ['start'],
-        localLinkSuggestion: null,
-      }],
+      })],
     });
     expect(fixture.componentInstance.valid()).toBeTrue();
+  });
+
+  it('explains supported path layouts and the safe analysis flow', () => {
+    const guide = fixture.nativeElement.querySelector(
+      '.discovery-guide',
+    ) as HTMLElement;
+    expect(guide).not.toBeNull();
+    expect(guide.textContent).toContain('Projeto exato');
+    expect(guide.textContent).toContain('Raiz com vários projetos');
+    expect(guide.textContent).toContain('Monorepo');
+    expect(guide.textContent).toContain('não executa builds ou scripts');
+    expect(guide.textContent).toContain('não altera os arquivos dos projetos');
+  });
+
+  it('uses the active semantic theme colors in the modal surfaces', () => {
+    document.documentElement.dataset['theme'] = 'light';
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector(
+      '.dialog',
+    ) as HTMLElement;
+    const input = fixture.nativeElement.querySelector(
+      'input[name="workspaceName"]',
+    ) as HTMLInputElement;
+    const guide = fixture.nativeElement.querySelector(
+      '.discovery-guide',
+    ) as HTMLElement;
+
+    expect(getComputedStyle(dialog).backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(dialog).color).toBe('rgb(24, 32, 51)');
+    expect(getComputedStyle(input).backgroundColor).toBe('rgb(247, 248, 251)');
+    expect(getComputedStyle(guide).backgroundColor)
+      .not.toBe('rgb(18, 24, 34)');
+
+    delete document.documentElement.dataset['theme'];
   });
 
   it('shows live scan progress while a path is being inspected', () => {
@@ -74,16 +134,10 @@ describe('WorkspaceDialogComponent', () => {
       rootPath: '/workspace/root',
       sourceType: 'root',
       warnings: [],
-      projects: [{
-        name: 'app',
+      projects: [candidate({
         relativePath: 'apps/app',
-        technology: 'Node.js',
         suggestedKind: null,
-        evidence: ['package.json'],
-        capabilities: [],
-        scripts: ['start'],
-        localLinkSuggestion: null,
-      }],
+      })],
     });
     fixture.componentInstance.setKind(0, 0, 'project');
     fixture.componentInstance.submit();
@@ -99,6 +153,9 @@ describe('WorkspaceDialogComponent', () => {
       }],
       environment: 'local',
       nodePolicy: { mode: 'inherit' },
+      executionPolicies: {
+        node: { runtime: { mode: 'inherit' } },
+      },
     });
   });
 
@@ -124,19 +181,14 @@ describe('WorkspaceDialogComponent', () => {
       rootPath: '/workspace/root',
       sourceType: 'root',
       warnings: [],
-      projects: [{
+      projects: [candidate({
         name: 'new-app',
         relativePath: 'apps/new-app',
-        technology: 'Node.js',
-        suggestedKind: 'project',
         configuredKind: 'project',
         kindSource: 'detected',
         status: 'new',
         evidence: ['package.json', 'Script executável'],
-        capabilities: [],
-        scripts: ['start'],
-        localLinkSuggestion: null,
-      }],
+      })],
     });
     fixture.componentInstance.setMissingProjects([{
       projectId: 'root/old-app',
@@ -158,16 +210,11 @@ describe('WorkspaceDialogComponent', () => {
       rootPath: '/workspace/lib',
       sourceType: 'project',
       warnings: [],
-      projects: [{
+      projects: [candidate({
         name: 'shared-lib',
-        relativePath: '.',
-        technology: 'Node.js',
         suggestedKind: null,
-        evidence: ['package.json'],
-        capabilities: [],
         scripts: ['watch'],
-        localLinkSuggestion: null,
-      }],
+      })],
     });
     fixture.componentInstance.setKind(0, 0, 'library');
     fixture.componentInstance.setLinkEnabled(0, 0, true);
@@ -188,31 +235,19 @@ describe('WorkspaceDialogComponent', () => {
       rootPath: '/workspace/root',
       sourceType: 'project',
       warnings: [],
-      projects: [{
-        name: 'app',
-        relativePath: '.',
-        technology: 'Node.js',
+      projects: [candidate({
         suggestedKind: 'library',
         evidence: ['ng-package'],
-        capabilities: [],
         scripts: ['build'],
-        localLinkSuggestion: null,
-      }],
+      })],
     });
     fixture.componentInstance.setInspection(index, {
       rootPath: '/workspace/root',
       sourceType: 'project',
       warnings: [],
-      projects: [{
-        name: 'app',
-        relativePath: '.',
-        technology: 'Node.js',
-        suggestedKind: 'project',
+      projects: [candidate({
         evidence: ['Script executável'],
-        capabilities: [],
-        scripts: ['start'],
-        localLinkSuggestion: null,
-      }],
+      })],
     });
     expect(fixture.componentInstance.sources[0].projects[0].kind)
       .toBe('project');
@@ -222,16 +257,9 @@ describe('WorkspaceDialogComponent', () => {
       rootPath: '/workspace/root',
       sourceType: 'project',
       warnings: [],
-      projects: [{
-        name: 'app',
-        relativePath: '.',
-        technology: 'Node.js',
-        suggestedKind: 'project',
+      projects: [candidate({
         evidence: ['Script executável'],
-        capabilities: [],
-        scripts: ['start'],
-        localLinkSuggestion: null,
-      }],
+      })],
     });
     expect(fixture.componentInstance.sources[0].projects[0].kind)
       .toBe('library');

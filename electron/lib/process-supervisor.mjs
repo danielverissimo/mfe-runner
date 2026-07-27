@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import net from 'node:net';
 import path from 'node:path';
+import { createLaunchSpecification } from './launch-specification.mjs';
 
 const HEALTH_INTERVAL_MS = 1800;
 const STOP_TIMEOUT_MS = 7000;
@@ -189,6 +190,7 @@ export class ProcessSupervisor extends EventEmitter {
       projectId: record.projectId,
       projectName: record.projectName,
       script: record.script,
+      commandId: record.commandId,
       status: record.status,
       pid: record.child?.pid ?? null,
       port: record.port,
@@ -200,7 +202,7 @@ export class ProcessSupervisor extends EventEmitter {
     }));
   }
 
-  async start({ workspace, project, script }) {
+  async start({ workspace, project, script, commandId }) {
     const key = processKey(workspace.id, project.id);
     const existing = this.#records.get(key);
     if (
@@ -212,25 +214,29 @@ export class ProcessSupervisor extends EventEmitter {
       throw new Error(`${project.name} já está em execução.`);
     }
 
-    const selectedScript = script || project.defaultScript;
-    if (!selectedScript || !project.scripts[selectedScript]) {
-      throw new Error(`Script não disponível para ${project.name}.`);
-    }
-    if (!project.node?.available) {
-      throw new Error(
-        project.node?.reason || `Node indisponível para ${project.name}.`,
-      );
-    }
-    if (project.port && await isPortOpen(project.port)) {
+    const selectedCommandId = commandId ??
+      project.commands?.find((command) => command.task === script)?.id ??
+      project.defaultCommandId;
+    const launch = createLaunchSpecification({
+      workspace,
+      project,
+      commandId: selectedCommandId,
+    });
+    const profile = project.commands?.find(
+      (command) => command.id === launch.commandId,
+    );
+    const selectedScript = profile?.task ?? script ?? launch.commandId;
+    if (launch.port && await isPortOpen(launch.port)) {
       const conflict = {
         key,
         workspaceId: workspace.id,
         projectId: project.id,
         projectName: project.name,
         script: selectedScript,
+        commandId: launch.commandId,
         status: 'conflict',
         child: null,
-        port: project.port,
+        port: launch.port,
         startedAt: null,
         stoppedAt: null,
         exitCode: null,
@@ -250,9 +256,10 @@ export class ProcessSupervisor extends EventEmitter {
       projectId: project.id,
       projectName: project.name,
       script: selectedScript,
+      commandId: launch.commandId,
       status: 'starting',
       child: null,
-      port: project.port,
+      port: launch.port,
       startedAt: new Date().toISOString(),
       stoppedAt: null,
       exitCode: null,
@@ -264,31 +271,18 @@ export class ProcessSupervisor extends EventEmitter {
       healthTimer: null,
       stdoutRemainder: '',
       stderrRemainder: '',
+      launchSpecification: launch,
     };
     this.#records.set(key, record);
-    this.#pushLog(record, 'system', `npm run ${selectedScript}`);
+    this.#pushLog(record, 'system', `${launch.label}: ${launch.commandId}`);
     this.#emitSnapshot();
 
-    const childEnvironment = {
-      ...process.env,
-      PATH: [
-        project.node.binDirectory,
-        process.env.PATH,
-      ].filter(Boolean).join(path.delimiter),
-      MFE_RUNNER_WORKSPACE: workspace.name,
-      MFE_RUNNER_ENVIRONMENT: workspace.environment,
-    };
-
-    const invocation = npmInvocation(
-      project.node,
-      ['run', selectedScript],
-    );
     const child = spawn(
-      invocation.command,
-      invocation.args,
+      launch.executable,
+      launch.args,
       {
-        cwd: project.absolutePath,
-        env: childEnvironment,
+        cwd: launch.cwd,
+        env: launch.env,
         shell: false,
         detached: process.platform !== 'win32',
         windowsHide: true,
@@ -506,9 +500,9 @@ export class ProcessSupervisor extends EventEmitter {
   async restart(workspaceId, projectId) {
     const record = this.#records.get(processKey(workspaceId, projectId));
     if (!record) throw new Error('Processo não encontrado para reinício.');
-    const { workspace, project, script } = record;
+    const { workspace, project, script, commandId } = record;
     await this.stop(workspaceId, projectId);
-    return this.start({ workspace, project, script });
+    return this.start({ workspace, project, script, commandId });
   }
 
   async stopWorkspace(workspaceId, projectIds) {
@@ -580,28 +574,42 @@ export class ProcessSupervisor extends EventEmitter {
   #startHealth(record) {
     const update = async () => {
       if (!record.child || record.child.exitCode !== null) return;
-      if (!record.port) {
+      const health = record.launchSpecification?.healthCheck ?? {
+        type: record.port ? 'tcp' : 'process',
+        port: record.port,
+      };
+      if (health.type === 'none' || health.type === 'process') {
         record.status = 'running';
-        record.message = 'Processo ativo; projeto sem porta detectada.';
+        record.message = 'Processo ativo.';
         this.#emitSnapshot();
         return;
       }
 
-      const portOpen = await isPortOpen(record.port);
+      const port = health.port ?? record.port;
+      const portOpen = await isPortOpen(port, health.host ?? '127.0.0.1');
       if (!portOpen) {
         record.status = 'starting';
-        record.message = `Aguardando a porta ${record.port}…`;
+        record.message = `Aguardando a porta ${port}…`;
         this.#emitSnapshot();
         return;
       }
 
-      const healthy = await checkHttp(
-        `http://127.0.0.1:${record.port}${healthPathFor(record.project)}`,
-      );
+      if (health.type === 'tcp') {
+        record.status = 'healthy';
+        record.message = `Saudável na porta ${port}.`;
+        this.#emitSnapshot();
+        return;
+      }
+
+      const url = health.url ??
+        `http://${health.host ?? '127.0.0.1'}:${port}${
+          health.path ?? healthPathFor(record.project)
+        }`;
+      const healthy = await checkHttp(url);
       record.status = healthy ? 'healthy' : 'degraded';
       record.message = healthy
-        ? `Saudável na porta ${record.port}.`
-        : `Porta ${record.port} aberta, mas o endpoint de saúde não respondeu.`;
+        ? `Saudável na porta ${port}.`
+        : `Porta ${port} aberta, mas o endpoint de saúde não respondeu.`;
       this.#emitSnapshot();
     };
 

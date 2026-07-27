@@ -108,6 +108,7 @@ describe('ProcessTableComponent', () => {
     expect(fixture.componentInstance.startProject.emit).toHaveBeenCalledWith({
       workspaceId: 'workspace-1',
       projectId: 'root-1/example',
+      commandId: 'node:script:start',
       script: 'start',
     });
   });
@@ -121,6 +122,23 @@ describe('ProcessTableComponent', () => {
       },
       scriptNames: ['ng', 'start'],
       defaultScript: 'ng',
+      commands: [{
+        id: 'node:script:ng',
+        label: 'npm run ng',
+        category: 'run' as const,
+        longRunning: true,
+        task: 'ng',
+        args: [],
+      }, {
+        id: 'node:script:start',
+        label: 'npm run start',
+        category: 'run' as const,
+        longRunning: true,
+        task: 'start',
+        args: [],
+      }],
+      commandIds: ['node:script:ng', 'node:script:start'],
+      defaultCommandId: 'node:script:ng',
     };
     fixture.componentRef.setInput('projects', [project]);
     fixture.detectChanges();
@@ -128,7 +146,7 @@ describe('ProcessTableComponent', () => {
     const select: HTMLSelectElement =
       fixture.nativeElement.querySelector('.script-select');
 
-    expect(select.value).toBe('ng');
+    expect(select.value).toBe('node:script:ng');
     expect(fixture.componentInstance.selectedScript(project)).toBe('ng');
   });
 
@@ -141,13 +159,30 @@ describe('ProcessTableComponent', () => {
       },
       scriptNames: ['ng', 'start'],
       defaultScript: 'start',
+      commands: [{
+        id: 'node:script:ng',
+        label: 'npm run ng',
+        category: 'run' as const,
+        longRunning: true,
+        task: 'ng',
+        args: [],
+      }, {
+        id: 'node:script:start',
+        label: 'npm run start',
+        category: 'run' as const,
+        longRunning: true,
+        task: 'start',
+        args: [],
+      }],
+      commandIds: ['node:script:ng', 'node:script:start'],
+      defaultCommandId: 'node:script:start',
     };
     fixture.componentRef.setInput('projects', [project]);
     fixture.detectChanges();
 
     let select: HTMLSelectElement =
       fixture.nativeElement.querySelector('.script-select');
-    select.value = 'ng';
+    select.value = 'node:script:ng';
     select.dispatchEvent(new Event('change'));
     fixture.detectChanges();
     expect(fixture.componentInstance.selectedScript(project)).toBe('ng');
@@ -156,7 +191,7 @@ describe('ProcessTableComponent', () => {
     fixture.detectChanges();
     select = fixture.nativeElement.querySelector('.script-select');
 
-    expect(select.value).toBe('start');
+    expect(select.value).toBe('node:script:start');
     expect(fixture.componentInstance.selectedScript(project)).toBe('start');
   });
 

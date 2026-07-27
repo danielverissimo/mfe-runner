@@ -29,7 +29,7 @@ const input = {
   nodePolicy: { mode: 'inherit' },
 };
 
-test('persists v5 sources, stable IDs, overrides and exclusions', async () => {
+test('persists v6 sources, stable IDs, policies, overrides and exclusions', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-config-'));
   const configPath = path.join(directory, 'runner-config.json');
   const store = new ConfigStore(configPath);
@@ -54,7 +54,7 @@ test('persists v5 sources, stable IDs, overrides and exclusions', async () => {
   await store.excludeProject(workspace.id, `${sourceId}/app`);
   await store.excludeProject(workspace.id, `${sourceId}/lib`);
   const persisted = JSON.parse(await readFile(configPath, 'utf8'));
-  assert.equal(persisted.version, 5);
+  assert.equal(persisted.version, 6);
   assert.equal(persisted.workspaces[0].name, 'Renamed');
   assert.deepEqual(persisted.workspaces[0].excludedProjectIds, [
     `${sourceId}/app`,
@@ -63,7 +63,7 @@ test('persists v5 sources, stable IDs, overrides and exclusions', async () => {
   assert.deepEqual(persisted.workspaces[0].projectOrder, []);
 });
 
-test('migrates v4 shell, roots and linked libraries into v5 sources', async () => {
+test('migrates v4 shell, roots and linked libraries into v6 sources', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-config-'));
   const configPath = path.join(directory, 'runner-config.json');
   await writeFile(configPath, JSON.stringify({
@@ -89,7 +89,7 @@ test('migrates v4 shell, roots and linked libraries into v5 sources', async () =
   }));
   const store = new ConfigStore(configPath);
   const snapshot = await store.load();
-  assert.equal(snapshot.version, 5);
+  assert.equal(snapshot.version, 6);
   assert.equal(snapshot.workspaces[0].projectSources.length, 3);
   assert.equal(snapshot.workspaces[0].projectSources[0].rootProjectId, 'shell');
   assert.equal(
@@ -104,11 +104,28 @@ test('uses keep-running for new installs and preserves the v4 fallback', async (
   const fresh = new ConfigStore(path.join(directory, 'fresh.json'));
   await fresh.load();
   assert.equal(fresh.snapshot.settings.stopProcessesOnExit, false);
+  assert.equal(fresh.snapshot.settings.theme, 'system');
   const oldPath = path.join(directory, 'old.json');
   await writeFile(oldPath, JSON.stringify({ version: 4, settings: {}, workspaces: [] }));
   const old = new ConfigStore(oldPath);
   await old.load();
   assert.equal(old.snapshot.settings.stopProcessesOnExit, true);
+  assert.equal(old.snapshot.settings.theme, 'system');
+});
+
+test('persists a valid appearance theme and sanitizes unsupported values', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-config-'));
+  const configPath = path.join(directory, 'runner-config.json');
+  const store = new ConfigStore(configPath);
+  await store.load();
+
+  await store.updateSettings({ theme: 'light' });
+  assert.equal(store.snapshot.settings.theme, 'light');
+
+  await store.updateSettings({ theme: 'unsupported' });
+  assert.equal(store.snapshot.settings.theme, 'system');
+  const persisted = JSON.parse(await readFile(configPath, 'utf8'));
+  assert.equal(persisted.settings.theme, 'system');
 });
 
 test('allows the same source path in different workspaces', async () => {
@@ -120,14 +137,66 @@ test('allows the same source path in different workspaces', async () => {
   assert.equal(store.snapshot.workspaces.length, 2);
 });
 
-test('backs up unsupported legacy configuration and starts with empty v5', async () => {
+test('migrates v5 Node policies and command overrides into v6', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-config-'));
+  const configPath = path.join(directory, 'runner-config.json');
+  await writeFile(configPath, JSON.stringify({
+    version: 5,
+    settings: {
+      globalNodePolicy: { mode: 'explicit', version: '22.17.0' },
+      stopProcessesOnExit: false,
+      logLimit: 900,
+    },
+    workspaces: [{
+      id: 'workspace',
+      name: 'Workspace',
+      projectSources: [{
+        id: 'source',
+        rootPath: '/tmp/project',
+        rootProjectId: 'source',
+        projects: [{
+          relativePath: '.',
+          kind: 'project',
+          kindSource: 'detected',
+        }],
+      }],
+      environment: 'local',
+      nodePolicy: { mode: 'auto' },
+      projectOverrides: {
+        source: {
+          nodePolicy: { mode: 'explicit', version: '20.19.0' },
+          defaultScript: 'start',
+        },
+      },
+      excludedProjectIds: [],
+    }],
+  }));
+  const store = new ConfigStore(configPath);
+  const snapshot = await store.load();
+  assert.equal(snapshot.version, 6);
+  assert.deepEqual(
+    snapshot.settings.executionPolicies.node.runtime,
+    { mode: 'explicit', version: '22.17.0' },
+  );
+  assert.deepEqual(
+    snapshot.workspaces[0].executionPolicies.node.runtime,
+    { mode: 'auto' },
+  );
+  assert.equal(
+    snapshot.workspaces[0].projectOverrides.source.defaultCommandId,
+    'node:script:start',
+  );
+  await readFile(path.join(directory, 'runner-config.v5.backup.json'));
+});
+
+test('backs up unsupported legacy configuration and starts with empty v6', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-config-'));
   const configPath = path.join(directory, 'runner-config.json');
   const legacy = { version: 3, shells: [{ id: 'shell' }] };
   await writeFile(configPath, JSON.stringify(legacy));
   const store = new ConfigStore(configPath);
   const snapshot = await store.load();
-  assert.equal(snapshot.version, 5);
+  assert.equal(snapshot.version, 6);
   assert.deepEqual(snapshot.workspaces, []);
   assert.deepEqual(
     JSON.parse(await readFile(path.join(directory, 'runner-config.v3.backup.json'))),

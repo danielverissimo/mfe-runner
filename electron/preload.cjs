@@ -3,6 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 const channels = Object.freeze({
   getSnapshot: 'runner:get-snapshot',
   listNodeVersions: 'runner:list-node-versions',
+  listRuntimeInstallations: 'runner:list-runtime-installations',
+  chooseRuntimePath: 'runner:choose-runtime-path',
+  openRuntimeDownload: 'runner:open-runtime-download',
   chooseProjectDirectory: 'runner:choose-project-directory',
   inspectProjectSource: 'runner:inspect-project-source',
   projectSourceInspectionProgress: 'runner:project-source-inspection-progress',
@@ -53,6 +56,12 @@ function subscribe(channel, callback) {
 contextBridge.exposeInMainWorld('runnerApi', Object.freeze({
   getSnapshot: () => ipcRenderer.invoke(channels.getSnapshot),
   listNodeVersions: () => ipcRenderer.invoke(channels.listNodeVersions),
+  listRuntimeInstallations: (input) =>
+    ipcRenderer.invoke(channels.listRuntimeInstallations, input),
+  chooseRuntimePath: (input) =>
+    ipcRenderer.invoke(channels.chooseRuntimePath, input),
+  openRuntimeDownload: (input) =>
+    ipcRenderer.invoke(channels.openRuntimeDownload, input),
   chooseProjectDirectory: (input) =>
     ipcRenderer.invoke(channels.chooseProjectDirectory, input),
   inspectProjectSource: (input) =>

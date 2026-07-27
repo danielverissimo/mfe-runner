@@ -211,10 +211,10 @@
 
           <article class="feature-card">
             <span class="feature-icon feature-icon--blue" aria-hidden="true">⬡</span>
-            <h3>Node certo para cada projeto</h3>
+            <h3>Runtime certo para cada projeto</h3>
             <p>
-              Use configuração global, por workspace ou individual, com
-              detecção de .nvmrc e versões instaladas pelo NVM.
+              Selecione runtimes e ferramentas globalmente, por workspace ou
+              projeto. O Runner detecta instalações locais e nunca instala SDKs.
             </p>
           </article>
 
@@ -227,6 +227,33 @@
             </p>
           </article>
         </div>
+      </section>
+
+      <section class="section ecosystem-support" aria-labelledby="ecosystem-title">
+        <div class="section-heading">
+          <span class="eyebrow">Vários ecossistemas, o mesmo fluxo</span>
+          <h2 id="ecosystem-title">Da aplicação Node ao backend Java</h2>
+          <p>
+            Node.js permanece estável. As novas integrações começam em Beta,
+            com descoberta estática, comandos estruturados e diagnósticos de runtime.
+          </p>
+        </div>
+        <div class="ecosystem-grid">
+          <article class="ecosystem-card ecosystem-card--stable">
+            <strong>Node.js</strong><span>Estável</span>
+            <small>npm scripts · .nvmrc · NVM · bibliotecas locais</small>
+          </article>
+          <article class="ecosystem-card"><strong>Java · Maven</strong><span>Beta</span><small>Wrapper · Spring Boot · Quarkus · módulos</small></article>
+          <article class="ecosystem-card"><strong>Java · Gradle</strong><span>Beta</span><small>Groovy/Kotlin DSL · bootRun · multiprojeto</small></article>
+          <article class="ecosystem-card"><strong>.NET</strong><span>Beta</span><small>.sln · .csproj · run · test · build</small></article>
+          <article class="ecosystem-card"><strong>Python</strong><span>Beta</span><small>venv · Poetry · uv · Django · Flask · FastAPI</small></article>
+          <article class="ecosystem-card"><strong>Rust</strong><span>Beta</span><small>Cargo · workspaces · toolchains</small></article>
+          <article class="ecosystem-card"><strong>Go</strong><span>Beta</span><small>go.mod · go.work · sem download automático</small></article>
+        </div>
+        <p class="ecosystem-note">
+          As integrações Beta precisam de mais testes multiplataforma.
+          Issues, fixtures e pull requests são bem-vindos.
+        </p>
       </section>
 
       <section class="section workflow" id="como-funciona">

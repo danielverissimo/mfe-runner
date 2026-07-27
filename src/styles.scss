@@ -4,10 +4,24 @@
   --runner-panel: #10151f;
   --runner-panel-raised: #141b27;
   --runner-panel-muted: #0c111a;
+  --runner-sidebar: #0b0f17;
+  --runner-topbar: rgb(8 11 18 / 82%);
+  --runner-control: #0a0f17;
+  --runner-control-raised: #111722;
+  --runner-overlay: rgb(2 4 8 / 78%);
   --runner-border: #252e3d;
   --runner-border-soft: #1b2431;
+  --runner-runtime-card-border: #344157;
+  --runner-runtime-card-border-strong: #46536a;
+  --runner-runtime-card-divider: #2a3548;
+  --runner-runtime-card-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 3%),
+    0 8px 22px rgb(0 0 0 / 10%);
   --runner-text: #f5f7fb;
   --runner-text-muted: #8792a5;
+  --runner-text-secondary: #cbd2df;
+  --runner-text-subtle: #69758a;
+  --runner-hover: rgb(255 255 255 / 3%);
   --runner-primary: #6d5dfc;
   --runner-primary-bright: #8c7cff;
   --runner-success: #28d39b;
@@ -19,6 +33,63 @@
   font-family:
     Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --runner-bg: #f3f5fa;
+  --runner-panel: #ffffff;
+  --runner-panel-raised: #f8f9fc;
+  --runner-panel-muted: #eef1f6;
+  --runner-sidebar: #f8f9fc;
+  --runner-topbar: rgb(255 255 255 / 88%);
+  --runner-control: #f7f8fb;
+  --runner-control-raised: #ffffff;
+  --runner-overlay: rgb(25 32 46 / 40%);
+  --runner-border: #ccd3df;
+  --runner-border-soft: #dde2ea;
+  --runner-runtime-card-border: #ccd3df;
+  --runner-runtime-card-border-strong: #b8c2d2;
+  --runner-runtime-card-divider: #dde2ea;
+  --runner-runtime-card-shadow: 0 1px 2px rgb(31 42 68 / 5%);
+  --runner-text: #182033;
+  --runner-text-muted: #667085;
+  --runner-text-secondary: #344054;
+  --runner-text-subtle: #7a8497;
+  --runner-hover: rgb(76 63 188 / 6%);
+  --runner-primary: #5948e6;
+  --runner-primary-bright: #6656ef;
+  --runner-shadow: 0 20px 50px rgb(31 42 68 / 14%);
+}
+
+.app-shell.app-shell--light {
+  --runner-bg: #f3f5fa;
+  --runner-panel: #ffffff;
+  --runner-panel-raised: #f8f9fc;
+  --runner-panel-muted: #eef1f6;
+  --runner-sidebar: #f8f9fc;
+  --runner-topbar: rgb(255 255 255 / 90%);
+  --runner-control: #f7f8fb;
+  --runner-control-raised: #ffffff;
+  --runner-overlay: rgb(25 32 46 / 40%);
+  --runner-border: #ccd3df;
+  --runner-border-soft: #dde2ea;
+  --runner-runtime-card-border: #ccd3df;
+  --runner-runtime-card-border-strong: #b8c2d2;
+  --runner-runtime-card-divider: #dde2ea;
+  --runner-runtime-card-shadow: 0 1px 2px rgb(31 42 68 / 5%);
+  --runner-text: #182033;
+  --runner-text-muted: #667085;
+  --runner-text-secondary: #344054;
+  --runner-text-subtle: #7a8497;
+  --runner-hover: rgb(76 63 188 / 6%);
+  --runner-primary: #5948e6;
+  --runner-primary-bright: #6656ef;
+  --runner-shadow: 0 20px 50px rgb(31 42 68 / 14%);
+  color: var(--runner-text);
+  background:
+    radial-gradient(circle at 92% -10%, rgb(89 72 230 / 8%), transparent 26%),
+    var(--runner-bg);
 }
 
 * {
@@ -33,6 +104,11 @@ body {
   overflow: hidden;
   background: var(--runner-bg);
   color: var(--runner-text);
+}
+
+body[data-theme="light"] {
+  background: #f3f5fa;
+  color: #182033;
 }
 
 button,
@@ -68,6 +144,130 @@ select:focus-visible {
 ::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
   border-radius: 999px;
-  background: #303a4a;
+  background: color-mix(in srgb, var(--runner-text-muted) 55%, transparent);
   background-clip: padding-box;
+}
+
+/*
+ * Some feature components predate the semantic theme tokens and still own
+ * local surface colors. Keep their light appearance centralized here while
+ * those components continue to use Angular style encapsulation.
+ */
+:root[data-theme="light"] {
+  .app-shell {
+    color: var(--runner-text);
+  }
+
+  .app-shell .button:not(.button--primary, .button--success, .button--danger) {
+    border-color: var(--runner-border);
+    color: var(--runner-text-secondary);
+    background: var(--runner-control-raised);
+  }
+
+  .app-shell nav button,
+  .app-shell .brand small,
+  .app-shell .connection strong,
+  .app-shell .connection small,
+  .app-shell .platform,
+  .app-shell .platform strong,
+  .app-shell .version {
+    color: var(--runner-text-muted);
+  }
+
+  input,
+  select {
+    color: var(--runner-text-secondary) !important;
+    background: var(--runner-control) !important;
+  }
+
+  app-process-table {
+    .table-shell,
+    table,
+    th,
+    code,
+    .script-select,
+    .tool-menu__panel,
+    .library-link,
+    .icon-button {
+      color: var(--runner-text-secondary) !important;
+      background: var(--runner-control) !important;
+    }
+
+    tbody tr:hover,
+    .tool-menu__panel button:hover {
+      background: var(--runner-hover);
+    }
+
+    .tool-menu__panel {
+      border-color: var(--runner-border);
+      box-shadow: var(--runner-shadow);
+    }
+  }
+
+  app-log-panel {
+    .logs,
+    header,
+    .filter,
+    .log-toolbar,
+    .console,
+    .source-filter-panel,
+    .source-filter-option,
+    .export-dialog,
+    .export-content select,
+    .export-dialog footer button {
+      color: var(--runner-text-secondary) !important;
+      background: var(--runner-control) !important;
+    }
+
+    .source-filter-option:hover {
+      background: var(--runner-hover);
+    }
+
+    .export-overlay {
+      background: var(--runner-overlay);
+    }
+  }
+
+  app-workspace-dialog,
+  app-project-settings-dialog,
+  app-system-info-dialog {
+    .backdrop {
+      background: var(--runner-overlay);
+    }
+
+    .dialog,
+    input,
+    select,
+    .source-card,
+    .candidate,
+    .form-section,
+    .project-facts,
+    .info-section,
+    .facts div,
+    .installed-node,
+    .version-list code,
+    .resolution-preview {
+      color: var(--runner-text-secondary) !important;
+      background: var(--runner-panel) !important;
+    }
+
+    .source-card,
+    .candidate,
+    .form-section,
+    .project-facts,
+    .info-section,
+    .facts div,
+    .installed-node,
+    .resolution-preview {
+      border-color: var(--runner-border);
+    }
+  }
+
+  app-node-version-picker {
+    input,
+    .node-picker__refresh {
+      color: var(--runner-text-secondary);
+      background: var(--runner-control);
+    }
+  }
 }
