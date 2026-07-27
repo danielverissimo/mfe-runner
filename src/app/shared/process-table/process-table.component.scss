@@ -1,7 +1,7 @@
 .table-shell {
   overflow: auto;
   max-height: min(58vh, 660px);
-  background: #0b111a;
+  background: var(--runner-panel);
 }
 
 :host(.process-table--fill) {
@@ -57,8 +57,8 @@ th {
   top: 0;
   padding: 11px 14px;
   border-bottom: 1px solid var(--runner-border);
-  color: #69758a;
-  background: #0a0f17;
+  color: var(--runner-text-subtle);
+  background: var(--runner-panel-muted);
   box-shadow: 0 1px 0 var(--runner-border);
   font-size: 9px;
   font-weight: 750;
@@ -153,7 +153,7 @@ tbody tr[data-status="degraded"] {
   align-items: center;
   gap: 5px;
   margin-top: 5px;
-  color: #66738a;
+  color: var(--runner-text-subtle);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 9px;
   white-space: nowrap;
@@ -161,13 +161,13 @@ tbody tr[data-status="degraded"] {
 
 .git-context b {
   overflow: hidden;
-  color: #8d98aa;
+  color: var(--runner-text-muted);
   font-weight: 650;
   text-overflow: ellipsis;
 }
 
 .git-context i {
-  color: #79859a;
+  color: var(--runner-text-subtle);
   font-style: normal;
 }
 
@@ -175,7 +175,7 @@ tbody tr[data-status="degraded"] {
   overflow: hidden;
   padding: 0;
   border: 0;
-  color: #566176;
+  color: var(--runner-text-subtle);
   background: transparent;
   text-overflow: ellipsis;
 }
@@ -240,8 +240,8 @@ code {
   padding: 4px 7px;
   border: 1px solid var(--runner-border);
   border-radius: 6px;
-  color: #cbd2df;
-  background: #080c13;
+  color: var(--runner-text-secondary);
+  background: var(--runner-control);
 }
 
 .script-select {
@@ -250,8 +250,8 @@ code {
   padding: 7px 28px 7px 9px;
   border: 1px solid var(--runner-border);
   border-radius: 8px;
-  color: #cbd2df;
-  background: #0a0f17;
+  color: var(--runner-text-secondary);
+  background: var(--runner-control);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
 }
@@ -279,24 +279,24 @@ code {
   display: grid;
   width: 180px;
   padding: 6px;
-  border: 1px solid #303a50;
+  border: 1px solid var(--runner-border);
   border-radius: 9px;
-  background: #111824;
-  box-shadow: 0 16px 38px rgb(0 0 0 / 42%);
+  background: var(--runner-panel-raised);
+  box-shadow: var(--runner-shadow);
 }
 
 .tool-menu__panel button {
   padding: 8px 10px;
   border: 0;
   border-radius: 6px;
-  color: #aeb8c9;
+  color: var(--runner-text-secondary);
   background: transparent;
   font-size: 11px;
   text-align: left;
 }
 
 .tool-menu__panel button:hover {
-  color: white;
+  color: var(--runner-text);
   background: rgb(109 93 252 / 13%);
 }
 
@@ -312,7 +312,7 @@ code {
 
 .library-menu__panel > strong {
   padding: 2px 4px 7px;
-  color: #d8deea;
+  color: var(--runner-text);
   font-size: 11px;
 }
 
@@ -324,7 +324,7 @@ code {
   padding: 8px;
   border: 1px solid var(--runner-border-soft);
   border-radius: 8px;
-  background: #0c121b;
+  background: var(--runner-panel-muted);
 }
 
 .library-link b,
@@ -334,7 +334,7 @@ code {
 
 .library-link b {
   overflow: hidden;
-  color: #d2d9e5;
+  color: var(--runner-text-secondary);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -342,7 +342,7 @@ code {
 
 .library-link small {
   margin-top: 3px;
-  color: #78859a;
+  color: var(--runner-text-muted);
   font-size: 9px;
 }
 
@@ -384,17 +384,17 @@ code {
   place-items: center;
   border: 1px solid var(--runner-border);
   border-radius: 9px;
-  color: #93a0b5;
-  background: linear-gradient(180deg, #141c29, #101722);
+  color: var(--runner-text-muted);
+  background: var(--runner-control-raised);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 2.5%),
     0 1px 2px rgb(0 0 0 / 18%);
 }
 
 .icon-button:hover:not(:disabled) {
-  border-color: #4a5870;
-  color: #f5f7fb;
-  background: #1a2433;
+  border-color: var(--runner-runtime-card-border-strong);
+  color: var(--runner-text);
+  background: var(--runner-panel-muted);
   transform: translateY(-1px);
 }
 
@@ -423,7 +423,7 @@ code {
 }
 
 .icon-button--restart {
-  color: #8f9db2;
+  color: var(--runner-text-muted);
 }
 
 .icon-button--logs {

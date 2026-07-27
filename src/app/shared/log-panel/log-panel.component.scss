@@ -2,7 +2,8 @@
   overflow: hidden;
   border: 1px solid var(--runner-border);
   border-radius: var(--runner-radius);
-  background: #070a10;
+  color: var(--runner-text-secondary);
+  background: var(--runner-panel);
   box-shadow: var(--runner-shadow);
 }
 
@@ -30,9 +31,9 @@ header {
   align-items: center;
   justify-content: space-between;
   padding: 0 14px;
-  border-bottom: 1px solid #1c2330;
-  color: #b4becf;
-  background: #0e131c;
+  border-bottom: 1px solid var(--runner-border-soft);
+  color: var(--runner-text-secondary);
+  background: var(--runner-panel-raised);
   font-size: 12px;
 }
 
@@ -69,7 +70,7 @@ header .open-logs {
 
 header .source-filter-toggle {
   padding: 5px 8px;
-  border: 1px solid #283246;
+  border: 1px solid var(--runner-border);
   border-radius: 6px;
 }
 
@@ -81,7 +82,7 @@ header .source-filter-toggle--active {
 
 header .copy-logs {
   padding: 5px 8px;
-  border: 1px solid #283246;
+  border: 1px solid var(--runner-border);
   border-radius: 6px;
 }
 
@@ -115,7 +116,7 @@ header .follow-logs--active {
 }
 
 header button:hover {
-  color: white;
+  color: var(--runner-text);
 }
 
 .terminal-dots {
@@ -155,8 +156,8 @@ header button:hover {
   gap: 7px;
   min-height: 46px;
   padding: 7px 14px;
-  border-bottom: 1px solid #1c2330;
-  background: #0b1018;
+  border-bottom: 1px solid var(--runner-border-soft);
+  background: var(--runner-panel-muted);
   scrollbar-width: thin;
 }
 
@@ -168,18 +169,18 @@ header button:hover {
   gap: 7px;
   min-height: 43px;
   padding: 6px 12px;
-  border-bottom: 1px solid #1c2330;
-  background: #0a0f17;
+  border-bottom: 1px solid var(--runner-border-soft);
+  background: var(--runner-panel-muted);
 }
 
 .log-toolbar button,
 .log-search {
   flex: none;
   min-height: 28px;
-  border: 1px solid #273044;
+  border: 1px solid var(--runner-border);
   border-radius: 7px;
-  color: #8e99ab;
-  background: #0e141e;
+  color: var(--runner-text-muted);
+  background: var(--runner-control-raised);
   font-size: 9px;
 }
 
@@ -206,7 +207,7 @@ header button:hover {
   padding: 5px 7px;
   border: 0;
   outline: 0;
-  color: #c8d0dd;
+  color: var(--runner-text-secondary);
   background: transparent;
   font-size: 10px;
 }
@@ -231,7 +232,7 @@ header button:hover {
 }
 
 .error-navigation span {
-  color: #758198;
+  color: var(--runner-text-subtle);
   font-size: 9px;
 }
 
@@ -248,16 +249,16 @@ header button:hover {
   gap: 7px;
   min-height: 29px;
   padding: 5px 9px;
-  border: 1px solid #273044;
+  border: 1px solid var(--runner-border);
   border-radius: 7px;
-  color: #8e99ab;
-  background: #0e141e;
+  color: var(--runner-text-muted);
+  background: var(--runner-control-raised);
   font-size: 10px;
 }
 
 .source-filter-option:hover {
-  border-color: #4a5270;
-  color: #d8deea;
+  border-color: var(--runner-runtime-card-border-strong);
+  color: var(--runner-text);
 }
 
 .source-filter-option--active {
@@ -270,8 +271,8 @@ header button:hover {
   min-width: 18px;
   padding: 1px 5px;
   border-radius: 999px;
-  color: #788398;
-  background: #171e2a;
+  color: var(--runner-text-subtle);
+  background: var(--runner-panel-muted);
   text-align: center;
 }
 
@@ -282,6 +283,8 @@ header button:hover {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
   line-height: 1.65;
+  color: var(--runner-text-secondary);
+  background: var(--runner-panel);
 }
 
 .logs--expanded .console {
@@ -298,7 +301,7 @@ header button:hover {
   grid-template-columns: 20px 62px minmax(100px, auto) 1fr;
   gap: 8px;
   border-radius: 3px;
-  color: #bac4d3;
+  color: var(--runner-text-secondary);
 }
 
 .line--level-warning .message {
@@ -330,7 +333,7 @@ header button:hover {
   align-self: start;
   padding: 0;
   border: 0;
-  color: #566176;
+  color: var(--runner-text-subtle);
   background: transparent;
   line-height: 1.65;
 }
@@ -340,11 +343,11 @@ header button:hover {
 }
 
 .line time {
-  color: #4f5b6e;
+  color: var(--runner-text-subtle);
 }
 
 .source {
-  color: #7d6eff;
+  color: var(--runner-primary-bright);
 }
 
 .line--stderr .message {
@@ -352,7 +355,7 @@ header button:hover {
 }
 
 .line--system .message {
-  color: #6fbaff;
+  color: var(--runner-info);
 }
 
 .message {
@@ -364,13 +367,13 @@ header button:hover {
   display: grid;
   height: 100%;
   place-content: center;
-  color: #4e596a;
+  color: var(--runner-text-subtle);
   text-align: center;
 }
 
 .empty span {
   margin-bottom: 6px;
-  color: #7062e8;
+  color: var(--runner-primary-bright);
   font-size: 22px;
 }
 
@@ -381,24 +384,24 @@ header button:hover {
   display: grid;
   padding: 24px;
   place-items: center;
-  background: rgb(2 5 10 / 78%);
+  background: var(--runner-overlay);
   backdrop-filter: blur(7px);
 }
 
 .export-dialog {
   width: min(520px, 100%);
   overflow: hidden;
-  border: 1px solid #344056;
+  border: 1px solid var(--runner-border);
   border-radius: 15px;
-  background: #111824;
-  box-shadow: 0 28px 80px rgb(0 0 0 / 60%);
+  background: var(--runner-panel-raised);
+  box-shadow: var(--runner-shadow);
 }
 
 .export-content {
   display: grid;
   gap: 16px;
   padding: 20px;
-  color: #929db0;
+  color: var(--runner-text-muted);
   font-size: 11px;
 }
 
@@ -414,10 +417,10 @@ header button:hover {
 .export-content select {
   height: 38px;
   padding: 0 10px;
-  border: 1px solid #303a50;
+  border: 1px solid var(--runner-border);
   border-radius: 8px;
-  color: #d6dce7;
-  background: #0a0f17;
+  color: var(--runner-text-secondary);
+  background: var(--runner-control);
 }
 
 .export-content .checkbox {
@@ -444,10 +447,10 @@ header button:hover {
 
 .export-dialog footer button {
   padding: 9px 13px;
-  border: 1px solid #303a50;
+  border: 1px solid var(--runner-border);
   border-radius: 8px;
-  color: #aeb8c9;
-  background: #121925;
+  color: var(--runner-text-secondary);
+  background: var(--runner-control-raised);
 }
 
 .export-dialog footer .primary {

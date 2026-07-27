@@ -15,6 +15,29 @@ describe('ProcessTableComponent', () => {
     fixture.detectChanges();
   });
 
+  afterEach(() => {
+    delete document.documentElement.dataset['theme'];
+  });
+
+  it('uses light surfaces for the table and actions in the light theme', () => {
+    document.documentElement.dataset['theme'] = 'light';
+    fixture.detectChanges();
+
+    const tableShell: HTMLElement =
+      fixture.nativeElement.querySelector('.table-shell');
+    const tableHeading: HTMLElement =
+      fixture.nativeElement.querySelector('th');
+    const action: HTMLButtonElement =
+      fixture.nativeElement.querySelector('.icon-button');
+
+    expect(getComputedStyle(tableShell).backgroundColor)
+      .toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(tableHeading).backgroundColor)
+      .not.toBe('rgb(10, 15, 23)');
+    expect(getComputedStyle(action).backgroundColor)
+      .not.toBe('rgb(18, 25, 37)');
+  });
+
   it('shows discovered port, command and resolved Node version', () => {
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('4310');

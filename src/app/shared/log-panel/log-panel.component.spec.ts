@@ -21,7 +21,27 @@ describe('LogPanelComponent', () => {
 
   afterEach(() => {
     window.getSelection()?.removeAllRanges();
+    delete document.documentElement.dataset['theme'];
     delete window.runnerApi;
+  });
+
+  it('uses light surfaces throughout the console in the light theme', () => {
+    document.documentElement.dataset['theme'] = 'light';
+    fixture.componentRef.setInput('processes', [processWithLogs('log-1')]);
+    fixture.detectChanges();
+
+    const logs: HTMLElement = fixture.nativeElement.querySelector('.logs');
+    const toolbar: HTMLElement =
+      fixture.nativeElement.querySelector('.log-toolbar');
+    const consoleElement: HTMLElement =
+      fixture.nativeElement.querySelector('.console');
+
+    expect(getComputedStyle(logs).backgroundColor)
+      .toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(toolbar).backgroundColor)
+      .not.toBe('rgb(10, 15, 23)');
+    expect(getComputedStyle(consoleElement).backgroundColor)
+      .toBe('rgb(255, 255, 255)');
   });
 
   it('filters logs by workspace and project', () => {

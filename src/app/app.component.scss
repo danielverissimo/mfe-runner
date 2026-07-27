@@ -309,12 +309,16 @@ main {
   padding: 0 13px;
   border: 1px solid var(--runner-border);
   border-radius: 8px;
-  color: #aeb8c8;
-  background: #121925;
+  color: var(--runner-text-secondary);
+  background: var(--runner-control-raised);
   font-size: 11px;
   font-weight: 700;
 }
-.button:hover:not(:disabled) { border-color: #414d62; color: white; }
+.button:hover:not(:disabled) {
+  border-color: var(--runner-runtime-card-border-strong);
+  color: var(--runner-text);
+  background: var(--runner-panel-muted);
+}
 .button:disabled { cursor: not-allowed; opacity: .42; }
 .button--primary { border-color: #7768ff; color: white; background: linear-gradient(135deg, #6656ef, #7c6cff); }
 .button--success { border-color: rgb(40 211 155 / 38%); color: #51dbae; background: rgb(40 211 155 / 8%); }
@@ -473,11 +477,11 @@ main {
   min-width: 0;
   border: 0;
   outline: 0;
-  color: #d6dbea;
+  color: var(--runner-text-secondary);
   background: transparent;
   font-size: 10px;
 }
-.project-search input::placeholder { color: #657086; }
+.project-search input::placeholder { color: var(--runner-text-subtle); }
 .project-search input::-webkit-search-cancel-button { display: none; }
 .project-search button {
   display: grid;
@@ -488,13 +492,13 @@ main {
   place-items: center;
   border: 0;
   border-radius: 5px;
-  color: #8c97aa;
+  color: var(--runner-text-muted);
   background: transparent;
   font-size: 14px;
 }
 .project-search button:hover {
-  color: white;
-  background: #18202d;
+  color: var(--runner-text);
+  background: var(--runner-panel-muted);
 }
 .process-filter {
   display: flex;
@@ -629,8 +633,9 @@ main {
   padding: 26px;
   border: 1px solid rgb(124 102 255 / 55%);
   border-radius: 18px;
-  background: #111824;
-  box-shadow: 0 28px 90px rgb(0 0 0 / 55%);
+  color: var(--runner-text);
+  background: var(--runner-panel-raised);
+  box-shadow: var(--runner-shadow);
   transform: translate(-50%, -50%);
 }
 .workspace-removal-loading h2,
