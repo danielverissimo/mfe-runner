@@ -2,7 +2,7 @@
   "name": "mfe-runner",
   "productName": "MFE Runner",
   "desktopName": "mfe-runner",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "Desktop control center for local applications, projects, libraries, processes, and logs",
   "homepage": "https://mferunner.com/",
@@ -50,7 +50,7 @@
     "deploy:server": "./docker-server/scripts/deploy-server.sh",
     "publish:update": "./docker-server/scripts/publish-update.sh \"$npm_package_version\"",
     "release:bump": "npm version patch --no-git-tag-version",
-    "dist:installers:publish": "npm run release:bump && npm run dist:installers && npm run publish:update"
+    "dist:installers:publish": "./scripts/release-installers.sh"
   },
   "dependencies": {
     "@angular/animations": "22.0.6",

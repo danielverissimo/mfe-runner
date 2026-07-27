@@ -1,5 +1,4 @@
-const RELEASES_API_URL =
-  'https://api.github.com/repos/danielverissimo/mfe-runner/releases?per_page=30';
+const RELEASES_API_URL = '/api/releases';
 const LANGUAGE_KEY = 'mfe-runner.language';
 const SUPPORTED_LANGUAGES = ['pt-BR', 'es', 'en', 'fr'];
 
@@ -233,7 +232,7 @@ function formatBytes(bytes) {
 
 function architectureLabel(arch, os = 'unknown') {
   return {
-    arm64: 'ARM64 / Apple Silicon',
+    arm64: os === 'mac' ? 'ARM64 / Apple Silicon' : 'ARM64',
     x64: os === 'mac' ? translate('Intel 64 bits') : 'x86_64 / AMD64',
     ia32: translate('x86 32 bits'),
     universal: translate('Instalador automático'),

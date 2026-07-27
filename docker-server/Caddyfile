@@ -19,6 +19,16 @@ mferunner.com {
 		respond "ok" 200
 	}
 
+	handle /api/releases {
+		rewrite * /repos/danielverissimo/mfe-runner/releases?per_page=30
+		reverse_proxy https://api.github.com {
+			header_up Host api.github.com
+			header_up Accept "application/vnd.github+json"
+			header_up X-GitHub-Api-Version "2022-11-28"
+		}
+		header Cache-Control "public, max-age=60"
+	}
+
 	@legacyDownloads path /mfe-runner /mfe-runner/*
 	handle @legacyDownloads {
 		redir https://github.com/danielverissimo/mfe-runner/releases/latest 302

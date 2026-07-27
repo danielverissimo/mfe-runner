@@ -8,8 +8,10 @@ https://mferunner.com/
 
 Os instaladores e metadados do atualizador ficam exclusivamente nos
 [GitHub Releases](https://github.com/danielverissimo/mfe-runner/releases).
-A landing page consulta a API pública do GitHub no navegador para listar as
-releases publicadas e recomendar o instalador adequado ao sistema do visitante.
+A landing page consulta a API pública do GitHub por um proxy de leitura em
+`/api/releases` para listar as releases publicadas e recomendar o instalador
+adequado ao sistema do visitante. O proxy não armazena binários; os downloads
+apontam diretamente para `github.com`.
 
 ## Preparação do host
 
@@ -49,10 +51,12 @@ Depois, gere e publique uma nova versão:
 npm run dist:installers:publish
 ```
 
-O comando incrementa a versão patch, limpa artefatos antigos, gera todos os
+O comando exige uma árvore Git limpa e sincronizada, incrementa a versão patch,
+cria e envia o commit da versão, limpa artefatos antigos, gera todos os
 instaladores no host macOS e cria uma release pública em
 `danielverissimo/mfe-runner`. A release permanece como rascunho enquanto os
-arquivos são enviados e só é publicada depois do upload completo.
+arquivos são enviados e só é publicada depois do upload completo. Assim, a tag
+da release sempre aponta para o código exato usado no build.
 
 Para publicar os artefatos da versão atual sem executar outro build:
 

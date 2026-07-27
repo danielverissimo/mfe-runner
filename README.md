@@ -290,8 +290,9 @@ GitHub:
 https://github.com/danielverissimo/mfe-runner/releases
 ```
 
-O domínio `mferunner.com` publica somente a landing page. Ela consulta a API
-pública do GitHub para oferecer downloads, sem manter cópias dos binários.
+O domínio `mferunner.com` publica a landing page e um proxy de leitura do
+catálogo público do GitHub para oferecer downloads, sem manter cópias dos
+binários. Os arquivos são baixados diretamente de GitHub Releases.
 O Docker Compose, a configuração TLS e os scripts de deploy/publicação ficam
 em `docker-server/`. Consulte `docker-server/README.md` antes de publicar.
 
@@ -307,8 +308,10 @@ alertas e impede que uma atualização não assinada substitua uma versão
 assinada. O Linux usa o pacote DEB da arquitetura instalada.
 
 Antes da primeira publicação, autentique o GitHub CLI com `gh auth login`.
-O repositório deve ter uma branch padrão. O fluxo não sobrescreve releases
-existentes: correções exigem uma nova versão.
+O repositório deve ter uma branch padrão e a árvore Git deve estar limpa e
+sincronizada. O fluxo cria e envia o commit da nova versão antes do build, para
+que a tag corresponda ao código distribuído. Releases existentes não são
+sobrescritas: correções exigem uma nova versão.
 
 ## Escopo do MVP
 
