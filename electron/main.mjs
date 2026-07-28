@@ -40,6 +40,7 @@ import {
   prepareSupervisorForExit,
   prepareSupervisorForUpdate,
 } from './lib/supervisor-exit-policy.mjs';
+import { restartActiveWorkspaceProjects } from './lib/workspace-lifecycle.mjs';
 import { listInstalledNodeVersions } from './lib/node-resolver.mjs';
 import { listRuntimeInstallations } from './lib/runtime-resolver.mjs';
 import { collectSystemInfo } from './lib/system-info.mjs';
@@ -620,6 +621,16 @@ async function stopWorkspace(workspaceId) {
     ? orderedExecutableProjects(catalog).reverse().map((project) => project.id)
     : undefined;
   await supervisor.stopWorkspace(workspaceId, projectIds);
+}
+
+async function restartWorkspace(workspaceId) {
+  const catalog = catalogs.get(workspaceId);
+  if (!catalog) throw new Error('Workspace não descoberta.');
+  return restartActiveWorkspaceProjects({
+    workspaceId,
+    projects: orderedExecutableProjects(catalog),
+    supervisor,
+  });
 }
 
 async function reviewWorkspace(workspaceId) {
@@ -1231,8 +1242,7 @@ function registerIpcHandlers() {
     IPC_CHANNELS.restartWorkspace,
     withValidatedSender(async (payload) => {
       const { workspaceId } = validateWorkspaceRequest(payload);
-      await stopWorkspace(workspaceId);
-      const result = await startWorkspace(workspaceId);
+      const result = await restartWorkspace(workspaceId);
       return { snapshot: buildSnapshot(), ...result };
     }),
   );

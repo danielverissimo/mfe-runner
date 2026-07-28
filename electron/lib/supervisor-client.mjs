@@ -29,8 +29,25 @@ const CONNECT_RETRY_DELAYS = [
   3000,
 ];
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const TASK_REQUEST_TIMEOUT_MS = 310_000;
+const MAXIMUM_PROJECT_STOP_MS = 9_000;
+const WORKSPACE_STOP_MARGIN_MS = 10_000;
+
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+export function supervisorRequestTimeout(method, payload = {}) {
+  if (method === 'runTask') return TASK_REQUEST_TIMEOUT_MS;
+  if (method !== 'stopWorkspace') return DEFAULT_REQUEST_TIMEOUT_MS;
+  const projectCount = Array.isArray(payload.projectIds)
+    ? payload.projectIds.length
+    : 1;
+  return Math.max(
+    DEFAULT_REQUEST_TIMEOUT_MS,
+    projectCount * MAXIMUM_PROJECT_STOP_MS + WORKSPACE_STOP_MARGIN_MS,
+  );
 }
 
 export class SupervisorClient extends EventEmitter {
@@ -413,7 +430,7 @@ export class SupervisorClient extends EventEmitter {
       const timer = setTimeout(() => {
         this.#pending.delete(id);
         reject(new Error(`Timeout ao executar ${method} no supervisor.`));
-      }, method === 'runTask' ? 310_000 : 30_000);
+      }, supervisorRequestTimeout(method, payload));
       this.#pending.set(id, { resolve, reject, timer });
       try {
         this.#socket.write(encodeFrame({
