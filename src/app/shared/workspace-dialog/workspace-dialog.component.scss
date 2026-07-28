@@ -1,3 +1,20 @@
+:host([data-theme="light"]) {
+  --runner-panel: #ffffff;
+  --runner-panel-muted: #eef1f6;
+  --runner-control: #f7f8fb;
+  --runner-control-raised: #ffffff;
+  --runner-overlay: rgb(25 32 46 / 40%);
+  --runner-border: #ccd3df;
+  --runner-border-soft: #dde2ea;
+  --runner-text: #182033;
+  --runner-text-muted: #667085;
+  --runner-text-secondary: #344054;
+  --runner-primary: #5948e6;
+  --runner-primary-bright: #6656ef;
+  --runner-shadow: 0 20px 50px rgb(31 42 68 / 14%);
+  color-scheme: light;
+}
+
 .backdrop {
   position: fixed;
   z-index: 40;

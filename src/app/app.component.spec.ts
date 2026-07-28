@@ -414,6 +414,10 @@ describe('AppComponent workspace experience', () => {
     expect(fixture.componentInstance.effectiveTheme()).toBe('light');
     expect(fixture.nativeElement.querySelector('.app-shell--light')).not.toBeNull();
     expect(
+      fixture.nativeElement.querySelector('app-workspace-dialog')
+        ?.getAttribute('data-theme'),
+    ).toBe('light');
+    expect(
       fixture.nativeElement.querySelector('.app-shell[data-theme="light"]'),
     ).not.toBeNull();
     expect(fixture.nativeElement.querySelectorAll('.theme-option').length).toBe(3);

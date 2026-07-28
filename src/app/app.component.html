@@ -734,6 +734,7 @@
 }
 
 <app-workspace-dialog
+  [attr.data-theme]="effectiveTheme()"
   [open]="workspaceDialogOpen()"
   [workspace]="workspaceDialogTarget()"
   [reviewMode]="workspaceDialogReviewMode()"

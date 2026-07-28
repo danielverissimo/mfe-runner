@@ -80,7 +80,8 @@ describe('WorkspaceDialogComponent', () => {
   });
 
   it('uses the active semantic theme colors in the modal surfaces', () => {
-    document.documentElement.dataset['theme'] = 'light';
+    document.documentElement.dataset['theme'] = 'dark';
+    fixture.nativeElement.setAttribute('data-theme', 'light');
     fixture.detectChanges();
 
     const dialog = fixture.nativeElement.querySelector(
@@ -99,6 +100,7 @@ describe('WorkspaceDialogComponent', () => {
     expect(getComputedStyle(guide).backgroundColor)
       .not.toBe('rgb(18, 24, 34)');
 
+    fixture.nativeElement.removeAttribute('data-theme');
     delete document.documentElement.dataset['theme'];
   });
 
