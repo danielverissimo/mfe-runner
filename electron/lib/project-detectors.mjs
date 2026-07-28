@@ -186,10 +186,10 @@ export class PackageJsonProjectDetector {
       task: script,
       args: [],
     }));
-    const preferredScript = scripts.start
-      ? 'start'
-      : angularLibrary && scripts.watch
-        ? 'watch'
+    const preferredScript = angularLibrary && scripts.watch
+      ? 'watch'
+      : scripts.start
+        ? 'start'
         : scripts.dev
           ? 'dev'
           : scripts.serve

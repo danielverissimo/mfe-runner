@@ -36,8 +36,8 @@ function findPortInScript(script) {
 
 function selectDefaultScript(kind, scripts, override) {
   if (override && scripts[override]) return override;
-  if (scripts.start) return 'start';
   if (kind === 'library' && scripts.watch) return 'watch';
+  if (scripts.start) return 'start';
   if (scripts.dev) return 'dev';
   if (scripts.serve) return 'serve';
   if (scripts.watch) return 'watch';
@@ -67,6 +67,41 @@ function roleFor(kind, capabilities) {
   if (capabilities.includes('host')) return 'shell';
   if (capabilities.includes('mfe')) return 'mfe';
   return 'application';
+}
+
+function inferredLocalLibraryLink(candidate, kindConfig) {
+  if (kindConfig.kind !== 'library') return null;
+  if (kindConfig.localLibraryLink) {
+    return kindConfig.localLibraryLink.enabled
+      ? kindConfig.localLibraryLink
+      : null;
+  }
+  if (
+    (candidate.ecosystem ?? 'node') !== 'node' ||
+    candidate.suggestedKind !== 'library' ||
+    !candidate.libraryArtifactRelativePath
+  ) {
+    return null;
+  }
+  const scripts = candidate.scripts ?? {};
+  const developmentScript = scripts.watch
+    ? 'watch'
+    : scripts.build
+      ? 'build'
+      : null;
+  const packageName =
+    candidate.libraryPackageName ??
+    candidate.packageJson?.name ??
+    null;
+  if (!developmentScript || !packageName) return null;
+  const unscopedName = packageName.replace(/^@[^/]+\//, '');
+  return {
+    enabled: true,
+    packageName,
+    developmentScript,
+    artifactRelativePath: candidate.libraryArtifactRelativePath,
+    preferredLinkScript: `link:${unscopedName.replace(/-lib$/, '')}`,
+  };
 }
 
 async function manifestFiles(projects) {
@@ -132,11 +167,8 @@ function registrationsFor(manifests, project) {
   return registrations;
 }
 
-async function libraryMetadata(candidate, sourceConfig, id, kindConfig) {
-  if (kindConfig.kind !== 'library' || !kindConfig.localLibraryLink?.enabled) {
-    return undefined;
-  }
-  const configured = kindConfig.localLibraryLink;
+async function libraryMetadata(candidate, id, configured) {
+  if (!configured) return undefined;
   const packageName =
     configured.packageName ||
     candidate.libraryPackageName ||
@@ -190,6 +222,7 @@ export async function discoverWorkspace(workspace, globalExecutionPolicies = {})
       if (workspace.excludedProjectIds?.includes(id)) continue;
       const override = workspace.projectOverrides?.[id] ?? {};
       const kindConfig = effectiveKind(source, candidate);
+      const localLibraryLink = inferredLocalLibraryLink(candidate, kindConfig);
       const capabilities = [...candidate.capabilities];
       const role = roleFor(kindConfig.kind, capabilities);
       const scripts = candidate.scripts ?? {};
@@ -197,14 +230,20 @@ export async function discoverWorkspace(workspace, globalExecutionPolicies = {})
         kindConfig.kind,
         scripts,
         override.defaultScript ??
-          kindConfig.localLibraryLink?.developmentScript,
+          localLibraryLink?.developmentScript,
       );
       const commands = candidate.commands ?? [];
+      const libraryWatchCommandId =
+        kindConfig.kind === 'library' && scripts.watch
+          ? commands.find((item) => item.task === 'watch')?.id ??
+            'node:script:watch'
+          : null;
       const defaultCommandId =
         override.defaultCommandId ??
         (override.defaultScript
           ? commands.find((item) => item.task === override.defaultScript)?.id
           : null) ??
+        libraryWatchCommandId ??
         candidate.defaultCommandId ??
         (legacyDefaultScript ? `node:script:${legacyDefaultScript}` : null);
       const runtimeProject = {
@@ -277,7 +316,7 @@ export async function discoverWorkspace(workspace, globalExecutionPolicies = {})
           source: runtime.components?.runtime?.source ?? 'path',
           reason: runtime.reason ?? undefined,
         },
-        library: await libraryMetadata(candidate, source, id, kindConfig),
+        library: await libraryMetadata(candidate, id, localLibraryLink),
         libraryLinkScriptOverrides: override.libraryLinkScripts ?? {},
         libraryLinks: [],
         warnings: [

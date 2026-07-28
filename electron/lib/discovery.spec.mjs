@@ -68,6 +68,7 @@ async function angularLibrary(projectPath) {
   await writeFile(path.join(projectPath, 'package.json'), JSON.stringify({
     name: 'web-common-lib',
     scripts: {
+      start: 'ng build web-common-lib',
       build: 'ng build web-common-lib',
       watch: 'ng build web-common-lib --watch',
     },
@@ -264,14 +265,7 @@ test('discovers linked libraries first with stable IDs and consumer link status'
       projects: [{
         relativePath: '.',
         kind: 'library',
-        kindSource: 'user',
-        localLibraryLink: {
-          enabled: true,
-          packageName: '',
-          developmentScript: 'watch',
-          artifactRelativePath: 'dist/web-common-lib',
-          preferredLinkScript: 'link:web-common',
-        },
+        kindSource: 'detected',
       }],
     }],
     environment: 'local',
@@ -286,6 +280,119 @@ test('discovers linked libraries first with stable IDs and consumer link status'
   );
   assert.equal(catalog.projects[0].role, 'library');
   assert.equal(catalog.projects[0].defaultScript, 'watch');
+  assert.equal(catalog.projects[0].defaultCommandId, 'node:script:watch');
   assert.equal(catalog.projects[1].libraryLinks[0].script, 'link:web-common');
   assert.equal(catalog.projects[1].libraryLinks[0].state, 'not-linked');
+});
+
+test('prioritizes watch for a classified library and preserves explicit overrides', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-library-default-'));
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({
+    name: 'manually-classified-library',
+    scripts: {
+      start: 'node start.js',
+      watch: 'node watch.js',
+    },
+  }));
+  await writeFile(path.join(root, '.nvmrc'), '24.15.0\n');
+
+  const workspace = {
+    id: 'workspace',
+    name: 'Workspace',
+    projectSources: [{
+      id: 'library',
+      rootPath: root,
+      rootProjectId: 'library',
+      projects: [{
+        relativePath: '.',
+        kind: 'library',
+        kindSource: 'user',
+      }],
+    }],
+    environment: 'local',
+    nodePolicy: { mode: 'inherit' },
+    projectOverrides: {},
+    excludedProjectIds: [],
+  };
+
+  const detectedCatalog = await discoverWorkspace(workspace, { mode: 'auto' });
+  assert.equal(detectedCatalog.projects[0].defaultScript, 'watch');
+  assert.equal(
+    detectedCatalog.projects[0].defaultCommandId,
+    'node:script:watch',
+  );
+
+  const overriddenCatalog = await discoverWorkspace({
+    ...workspace,
+    projectOverrides: {
+      library: {
+        defaultScript: 'start',
+        defaultCommandId: 'node:script:start',
+      },
+    },
+  }, { mode: 'auto' });
+  assert.equal(overriddenCatalog.projects[0].defaultScript, 'start');
+  assert.equal(
+    overriddenCatalog.projects[0].defaultCommandId,
+    'node:script:start',
+  );
+});
+
+test('respects an explicit opt-out from local linking for a detected library', async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-library-opt-out-'));
+  const libraryPath = path.join(base, 'web-common');
+  const consumerPath = path.join(base, 'consumer');
+  await angularLibrary(libraryPath);
+  await angularProject(consumerPath, {
+    name: 'consumer',
+    scripts: {
+      start: 'ng serve',
+      'link:web-common': 'node link.js',
+    },
+  });
+
+  const catalog = await discoverWorkspace({
+    id: 'workspace',
+    name: 'Workspace',
+    projectSources: [{
+      id: 'web-common',
+      rootPath: libraryPath,
+      rootProjectId: 'library:web-common',
+      projects: [{
+        relativePath: '.',
+        kind: 'library',
+        kindSource: 'detected',
+        localLibraryLink: {
+          enabled: false,
+          packageName: 'web-common-lib',
+          developmentScript: 'watch',
+          artifactRelativePath: 'dist/web-common-lib',
+          preferredLinkScript: 'link:web-common',
+        },
+      }],
+    }, {
+      id: 'consumer',
+      rootPath: consumerPath,
+      rootProjectId: 'consumer',
+      projects: [{
+        relativePath: '.',
+        kind: 'project',
+        kindSource: 'detected',
+      }],
+    }],
+    environment: 'local',
+    nodePolicy: { mode: 'inherit' },
+    projectOverrides: {},
+    excludedProjectIds: [],
+  }, { mode: 'auto' });
+
+  assert.equal(
+    catalog.projects.find((project) => project.id === 'library:web-common')?.library,
+    undefined,
+  );
+  assert.deepEqual(
+    catalog.projects.find((project) => project.id === 'consumer')?.libraryLinks,
+    [],
+  );
 });

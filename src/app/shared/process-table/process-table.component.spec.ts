@@ -240,6 +240,57 @@ describe('ProcessTableComponent', () => {
     expect(fixture.componentInstance.toolsProjectId).toBeNull();
   });
 
+  it('renders the options menu as a viewport overlay and closes it outside', () => {
+    const menuButton: HTMLButtonElement =
+      fixture.nativeElement.querySelector('.icon-button--more');
+    spyOn(menuButton, 'getBoundingClientRect').and.returnValue({
+      x: 900,
+      y: 240,
+      top: 240,
+      right: 936,
+      bottom: 276,
+      left: 900,
+      width: 36,
+      height: 36,
+      toJSON: () => ({}),
+    });
+
+    menuButton.click();
+    fixture.detectChanges();
+
+    const panel: HTMLElement =
+      fixture.nativeElement.querySelector('.tool-menu__panel');
+    expect(getComputedStyle(panel).position).toBe('fixed');
+    expect(getComputedStyle(panel).zIndex).toBe('10000');
+    expect(
+      fixture.componentInstance.menuPosition.top ??
+      fixture.componentInstance.menuPosition.bottom,
+    ).not.toBeNull();
+    expect(fixture.componentInstance.menuPosition.right).toBeGreaterThanOrEqual(12);
+    expect(fixture.componentInstance.toolsProjectId).toBe(projectFixture.id);
+
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.toolsProjectId).toBeNull();
+    expect(fixture.nativeElement.querySelector('.tool-menu__panel')).toBeNull();
+  });
+
+  it('closes an open options menu with Escape', () => {
+    const menuButton: HTMLButtonElement =
+      fixture.nativeElement.querySelector('.icon-button--more');
+    menuButton.click();
+    fixture.detectChanges();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+    }));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.toolsProjectId).toBeNull();
+  });
+
   it('offers accessible project reordering from the options menu', () => {
     const secondProject = {
       ...projectFixture,

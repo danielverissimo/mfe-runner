@@ -33,6 +33,7 @@
     "test:clean-artifacts": "node --test ./scripts/clean-artifacts.spec.mjs",
     "verify:packaged-dependencies": "node ./scripts/verify-packaged-dependencies.mjs",
     "test:packaged-dependencies": "node --test ./scripts/verify-packaged-dependencies.spec.mjs",
+    "test:deploy-server": "node --test ./docker-server/scripts/deploy-server.spec.mjs",
     "dist:mac:arm64": "npm run clean:artifacts && npm run build && electron-builder --mac --arm64 --dir",
     "dist:mac:x64": "npm run clean:artifacts && npm run build && electron-builder --mac --x64 --dir",
     "dist:mac:arm64:installer": "npm run clean:artifacts && npm run build && APPLE_KEYCHAIN_PROFILE=mfe-runner-notary electron-builder --mac dmg zip --arm64 --publish never",

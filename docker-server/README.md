@@ -46,10 +46,29 @@ curl --fail https://mferunner.com/healthz
 O comando sincroniza apenas Docker Compose, Caddy e os arquivos da landing
 page. Nenhum binário é enviado para `mferunner.com`.
 
+### Isolamento e segurança do deploy
+
+O deploy é deliberadamente limitado ao projeto Compose
+`mfe-runner-update-server` e ao serviço `update-server`:
+
+- utiliza staging dentro de `/home/forge/mfe-runner-update-server`;
+- valida `compose.yml` e `Caddyfile` antes de substituir os arquivos ativos;
+- mantém backups datados em `.deploy-backups/`;
+- recria somente `update-server`, sempre com `--no-deps`;
+- aguarda o health check e restaura a versão anterior em caso de falha;
+- nunca executa `docker compose down`, `docker stop`, `docker rm` ou comandos
+  `prune`;
+- não lê, altera ou remove containers, volumes, redes, projetos Compose ou
+  arquivos do Caddy que estejam fora do diretório exclusivo do MFE Runner.
+
+Não reutilize `MFE_RUNNER_UPDATE_REMOTE_DIR` para uma pasta compartilhada com
+outro serviço. O diretório remoto precisa continuar exclusivo do MFE Runner.
+
 Antes do deploy, valide localmente a estrutura estática:
 
 ```bash
 node --check docker-server/landing-page/app.js
+npm run test:deploy-server
 ```
 
 ## Publicação de uma versão

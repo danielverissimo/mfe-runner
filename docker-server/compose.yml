@@ -1,3 +1,5 @@
+name: mfe-runner-update-server
+
 services:
   update-server:
     image: caddy:2.11.4-alpine

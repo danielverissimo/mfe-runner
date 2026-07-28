@@ -138,13 +138,17 @@ test('suggests library only from reliable Angular library evidence', async () =>
   const root = await mkdtemp(path.join(os.tmpdir(), 'runner-detector-library-'));
   await packageProject(root, {
     name: 'shared-ui',
-    scripts: { watch: 'ng build shared-ui --watch' },
+    scripts: {
+      start: 'ng build shared-ui',
+      watch: 'ng build shared-ui --watch',
+    },
     angularType: 'library',
     ngPackage: true,
     nestedPackageName: '@example/shared-ui',
   });
   const inspection = publicSourceInspection(await inspectProjectSource(root));
   assert.equal(inspection.projects[0].suggestedKind, 'library');
+  assert.equal(inspection.projects[0].defaultCommandId, 'node:script:watch');
   assert.deepEqual(inspection.projects[0].capabilities, ['angular']);
   assert.equal(
     inspection.projects[0].localLinkSuggestion?.packageName,

@@ -200,7 +200,24 @@ export class SupervisorClient extends EventEmitter {
     this.#token = await ensureSupervisorToken(this.userDataPath);
   }
 
-  #requestLegacyStopAll(endpoint) {
+  async #requestLegacyStopAll(endpoint) {
+    const legacyVersions = Array.from(
+      { length: SUPERVISOR_PROTOCOL_VERSION - 1 },
+      (_, index) => SUPERVISOR_PROTOCOL_VERSION - index - 1,
+    );
+    let lastError;
+    for (const protocolVersion of legacyVersions) {
+      try {
+        await this.#requestStopAllWithProtocol(endpoint, protocolVersion);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError ?? new Error('Supervisor anterior não reconhecido.');
+  }
+
+  #requestStopAllWithProtocol(endpoint, protocolVersion) {
     return new Promise((resolve, reject) => {
       const socket = net.createConnection(endpoint);
       const timer = setTimeout(() => {
@@ -217,7 +234,7 @@ export class SupervisorClient extends EventEmitter {
       socket.once('connect', () => {
         socket.write(encodeFrame({
           type: 'handshake',
-          protocolVersion: 1,
+          protocolVersion,
           token: this.#token,
         }, SUPERVISOR_REQUEST_LIMIT));
       });
@@ -225,7 +242,10 @@ export class SupervisorClient extends EventEmitter {
         SUPERVISOR_RESPONSE_LIMIT,
         (frame) => {
           if (!authenticated) {
-            if (frame?.type !== 'handshake' || frame.protocolVersion !== 1) {
+            if (
+              frame?.type !== 'handshake' ||
+              frame.protocolVersion !== protocolVersion
+            ) {
               finish(new Error('Supervisor anterior não reconhecido.'));
               return;
             }

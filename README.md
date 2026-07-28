@@ -105,8 +105,8 @@ The private configuration format is version 6. It stores unified
 and per-project overrides. Previous configurations are backed up and migrated
 automatically, preserving workspaces, stable project IDs, classifications,
 exclusions, visual order, and Node local-library link settings. Supervisor
-protocol v2 intentionally discards processes and logs owned by the obsolete
-protocol during the migration; project files are unaffected.
+protocol v5 gracefully stops processes owned by an obsolete protocol before
+replacing its detached daemon; project files are unaffected.
 
 Rediscovery is review-first: new, unchanged, and missing projects are shown
 before the catalog is changed. Canceling the review leaves the active catalog

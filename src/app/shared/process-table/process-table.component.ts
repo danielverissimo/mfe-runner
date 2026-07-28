@@ -62,11 +62,31 @@ export class ProcessTableComponent {
   private readonly selectedCommands = new Map<string, string>();
   toolsProjectId: string | null = null;
   libraryProjectId: string | null = null;
+  menuPosition: {
+    top: number | null;
+    right: number;
+    bottom: number | null;
+    maxHeight: number;
+  } = {
+    top: null,
+    right: 12,
+    bottom: null,
+    maxHeight: 320,
+  };
 
   @HostListener('document:keydown.escape')
   closeToolMenuOnEscape(): void {
-    this.closeTools();
-    this.closeLibraries();
+    this.closeMenus();
+  }
+
+  @HostListener('document:click')
+  closeToolMenuOnOutsideClick(): void {
+    this.closeMenus();
+  }
+
+  @HostListener('window:resize')
+  closeToolMenuOnResize(): void {
+    this.closeMenus();
   }
 
   processFor(projectId: string): ManagedProcess | undefined {
@@ -187,13 +207,28 @@ export class ProcessTableComponent {
     return warning;
   }
 
-  toggleTools(projectId: string): void {
-    this.toolsProjectId = this.toolsProjectId === projectId ? null : projectId;
+  toggleTools(projectId: string, event: MouseEvent): void {
+    event.stopPropagation();
+    if (this.toolsProjectId === projectId) {
+      this.closeTools();
+      return;
+    }
+
+    this.positionMenu(event.currentTarget as HTMLElement, 320);
+    this.toolsProjectId = projectId;
+    this.libraryProjectId = null;
   }
 
-  toggleLibraries(projectId: string): void {
+  toggleLibraries(projectId: string, event: MouseEvent): void {
+    event.stopPropagation();
+    if (this.libraryProjectId === projectId) {
+      this.closeLibraries();
+      return;
+    }
+
+    this.positionMenu(event.currentTarget as HTMLElement, 360);
     this.libraryProjectId =
-      this.libraryProjectId === projectId ? null : projectId;
+      projectId;
     this.toolsProjectId = null;
   }
 
@@ -217,6 +252,11 @@ export class ProcessTableComponent {
 
   closeTools(): void {
     this.toolsProjectId = null;
+  }
+
+  closeMenus(): void {
+    this.closeTools();
+    this.closeLibraries();
   }
 
   canMove(project: DiscoveredProject, direction: 'up' | 'down'): boolean {
@@ -257,5 +297,25 @@ export class ProcessTableComponent {
 
   private scriptSelectionKey(projectId: string): string {
     return `${this.workspaceId}\u0000${projectId}`;
+  }
+
+  private positionMenu(trigger: HTMLElement, preferredHeight: number): void {
+    const rect = trigger.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+    const viewportHeight =
+      document.documentElement.clientHeight || window.innerHeight;
+    const edge = 12;
+    const gap = 6;
+    const spaceBelow = viewportHeight - rect.bottom - gap - edge;
+    const spaceAbove = rect.top - gap - edge;
+    const openBelow =
+      spaceBelow >= Math.min(preferredHeight, 220) || spaceBelow >= spaceAbove;
+
+    this.menuPosition = {
+      top: openBelow ? rect.bottom + gap : null,
+      right: Math.max(edge, viewportWidth - rect.right),
+      bottom: openBelow ? null : viewportHeight - rect.top + gap,
+      maxHeight: Math.max(120, openBelow ? spaceBelow : spaceAbove),
+    };
   }
 }

@@ -1,7 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 
-export const SUPERVISOR_PROTOCOL_VERSION = 2;
+// Bump this version whenever a change in ProcessSupervisor must replace an
+// already-running detached daemon. The client retires the previous protocol
+// before starting the new implementation.
+export const SUPERVISOR_PROTOCOL_VERSION = 5;
 export const SUPERVISOR_REQUEST_LIMIT = 2 * 1024 * 1024;
 export const SUPERVISOR_RESPONSE_LIMIT = 32 * 1024 * 1024;
 export const SUPERVISOR_IDLE_TIMEOUT_MS = 15_000;

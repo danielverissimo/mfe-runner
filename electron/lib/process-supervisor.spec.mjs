@@ -72,6 +72,43 @@ test('invokes npm.cmd through Node on Windows without enabling a shell', () => {
   ]);
 });
 
+test('one-shot Node tasks replace stale daemon NVM variables with the resolved runtime', () => {
+  const selectedBin = path.join(
+    os.homedir(),
+    '.nvm',
+    'versions',
+    'node',
+    'v24.15.0',
+    'bin',
+  );
+  const environment = __test__.nodeTaskEnvironment(
+    {
+      node: { binDirectory: selectedBin },
+      runtime: {
+        environment: {
+          PATH: `${selectedBin}${path.delimiter}/usr/bin`,
+        },
+      },
+    },
+    {
+      PATH: `/stale/node/bin${path.delimiter}/usr/bin`,
+      NVM_BIN: '/stale/node/bin',
+      NVM_INC: '/stale/node/include/node',
+    },
+  );
+
+  assert.equal(environment.NVM_BIN, selectedBin);
+  if (process.platform !== 'win32') {
+    assert.equal(
+      environment.NVM_INC,
+      path.resolve(selectedBin, '..', 'include', 'node'),
+    );
+  }
+  assert.equal(environment.PATH.split(path.delimiter)[0], selectedBin);
+  assert.equal(environment.npm_config_audit, 'false');
+  assert.equal(environment.npm_config_fund, 'false');
+});
+
 test('starts only a declared package script and captures its output', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-process-'));
   await mkdir(directory, { recursive: true });
@@ -184,13 +221,14 @@ test('one-shot tasks reject every command outside declared link scripts', async 
 
 test('one-shot link tasks expose a dedicated linking state until completion', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-link-task-'));
+  const selectedBin = path.dirname(process.execPath);
   await writeFile(
     path.join(directory, 'package.json'),
     JSON.stringify({
       name: 'link-consumer',
       scripts: {
         'link:verify':
-          'node -e "setTimeout(() => console.log(\'linked\'), 100)"',
+          'node -e "setTimeout(() => console.log(process.env.NVM_BIN), 100)"',
       },
     }),
   );
@@ -213,12 +251,19 @@ test('one-shot link tasks expose a dedicated linking state until completion', as
       port: null,
       scripts: {
         'link:verify':
-          'node -e "setTimeout(() => console.log(\'linked\'), 100)"',
+          'node -e "setTimeout(() => console.log(process.env.NVM_BIN), 100)"',
       },
       node: {
         available: true,
         npmExecutable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
-        binDirectory: path.dirname(process.execPath),
+        binDirectory: selectedBin,
+      },
+      runtime: {
+        environment: {
+          PATH: `/stale/node/bin${path.delimiter}/usr/bin`,
+          NVM_BIN: '/stale/node/bin',
+          NVM_INC: '/stale/node/include/node',
+        },
       },
     },
     script: 'link:verify',
@@ -226,5 +271,78 @@ test('one-shot link tasks expose a dedicated linking state until completion', as
   });
 
   assert.equal(statuses.includes('linking'), true);
-  assert.equal(supervisor.snapshot()[0].status, 'stopped');
+  const [record] = supervisor.snapshot();
+  assert.equal(record.status, 'stopped');
+  assert.equal(
+    record.logs.some((entry) => entry.message === selectedBin),
+    true,
+  );
 });
+
+test(
+  'one-shot link tasks can be retried after termination by signal',
+  { skip: process.platform === 'win32' },
+  async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), 'mfe-runner-link-retry-'),
+    );
+    await writeFile(
+      path.join(directory, 'package.json'),
+      JSON.stringify({
+        name: 'link-retry-consumer',
+        scripts: {
+          'link:terminate':
+            'node -e "process.kill(process.pid, \'SIGTERM\')"',
+          'link:verify':
+            'node -e "console.log(\'link-retry-ready\')"',
+        },
+      }),
+    );
+    const supervisor = new ProcessSupervisor({ logLimit: 50 });
+    const project = {
+      id: 'consumer',
+      name: 'link-retry-consumer',
+      absolutePath: directory,
+      port: null,
+      scripts: {
+        'link:terminate':
+          'node -e "process.kill(process.pid, \'SIGTERM\')"',
+        'link:verify':
+          'node -e "console.log(\'link-retry-ready\')"',
+      },
+      node: {
+        available: true,
+        npmExecutable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
+        binDirectory: path.dirname(process.execPath),
+      },
+    };
+    const workspace = {
+      id: 'workspace',
+      name: 'Workspace',
+      environment: 'local',
+    };
+
+    await assert.rejects(
+      supervisor.runTask({
+        workspace,
+        project,
+        script: 'link:terminate',
+        label: 'Vínculo interrompido',
+      }),
+      /SIGTERM/,
+    );
+    await supervisor.runTask({
+      workspace,
+      project,
+      script: 'link:verify',
+      label: 'Nova tentativa',
+    });
+
+    const [record] = supervisor.snapshot();
+    assert.equal(record.status, 'stopped');
+    assert.equal(
+      record.logs.some((entry) => entry.message === 'link-retry-ready'),
+      true,
+    );
+  },
+);

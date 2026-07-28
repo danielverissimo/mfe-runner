@@ -722,6 +722,21 @@ export async function resolveEcosystemRuntime({
           node.binDirectory,
           process.env.PATH,
         ].filter(Boolean).join(path.delimiter),
+        ...(node.binDirectory
+          ? {
+              NVM_BIN: node.binDirectory,
+              ...(process.platform !== 'win32'
+                ? {
+                    NVM_INC: path.resolve(
+                      node.binDirectory,
+                      '..',
+                      'include',
+                      'node',
+                    ),
+                  }
+                : {}),
+            }
+          : {}),
       },
       legacyNode: node,
     };

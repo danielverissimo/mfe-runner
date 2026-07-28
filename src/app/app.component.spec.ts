@@ -241,6 +241,27 @@ describe('AppComponent workspace experience', () => {
       .toBe(2);
   });
 
+  it('keeps the active project filter readable in the light theme', async () => {
+    const updateSettings = window.runnerApi?.updateSettings as jasmine.Spy;
+    updateSettings.and.callFake(async (input) => ({
+      ...snapshotFixture,
+      config: {
+        ...snapshotFixture.config,
+        settings: {
+          ...snapshotFixture.config.settings,
+          ...input,
+        },
+      },
+    }));
+
+    await fixture.componentInstance.updateTheme('light');
+    fixture.detectChanges();
+
+    const activeFilter: HTMLButtonElement =
+      fixture.nativeElement.querySelector('.process-filter button.active');
+    expect(getComputedStyle(activeFilter).color).toBe('rgb(102, 86, 239)');
+  });
+
   it('shows a specific empty state when no project is running', () => {
     fixture.componentInstance.projectVisibility.set('running');
     fixture.detectChanges();

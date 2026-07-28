@@ -229,6 +229,69 @@ describe('WorkspaceDialogComponent', () => {
     expect(fixture.componentInstance.valid()).toBeTrue();
   });
 
+  it('enables linking by default for a confidently detected Node library', () => {
+    fixture.componentInstance.name = 'Workspace';
+    const index = fixture.componentInstance.beginInspection('/workspace/lib');
+    fixture.componentInstance.setInspection(index, {
+      rootPath: '/workspace/lib',
+      sourceType: 'project',
+      warnings: [],
+      projects: [candidate({
+        name: 'web-common-lib',
+        suggestedKind: 'library',
+        evidence: ['Angular projectType: library', 'ng-package'],
+        scripts: ['build', 'watch'],
+        localLinkSuggestion: {
+          packageName: 'web-common-lib',
+          developmentScript: 'watch',
+          artifactRelativePath: 'dist/web-common-lib',
+          preferredLinkScript: 'link:web-common',
+        },
+      })],
+    });
+
+    const project = fixture.componentInstance.sources[0].projects[0];
+    expect(project.linkEnabled).toBeTrue();
+    expect(project.localLink?.preferredLinkScript).toBe('link:web-common');
+  });
+
+  it('persists an explicit opt-out from linking a detected library', () => {
+    fixture.componentInstance.name = 'Workspace';
+    const index = fixture.componentInstance.beginInspection('/workspace/lib');
+    fixture.componentInstance.setInspection(index, {
+      rootPath: '/workspace/lib',
+      sourceType: 'project',
+      warnings: [],
+      projects: [candidate({
+        name: 'web-common-lib',
+        suggestedKind: 'library',
+        evidence: ['Angular projectType: library', 'ng-package'],
+        scripts: ['build', 'watch'],
+        localLinkSuggestion: {
+          packageName: 'web-common-lib',
+          developmentScript: 'watch',
+          artifactRelativePath: 'dist/web-common-lib',
+          preferredLinkScript: 'link:web-common',
+        },
+      })],
+    });
+    fixture.componentInstance.setLinkEnabled(0, 0, false);
+    spyOn(fixture.componentInstance.saveWorkspace, 'emit');
+
+    fixture.componentInstance.submit();
+
+    const saved = (
+      fixture.componentInstance.saveWorkspace.emit as jasmine.Spy
+    ).calls.mostRecent().args[0];
+    expect(saved.projectSources[0].projects[0].localLibraryLink).toEqual({
+      enabled: false,
+      packageName: 'web-common-lib',
+      developmentScript: 'watch',
+      artifactRelativePath: 'dist/web-common-lib',
+      preferredLinkScript: 'link:web-common',
+    });
+  });
+
   it('recalculates detected kinds without replacing a user override', () => {
     const index = fixture.componentInstance.beginInspection('/workspace/root');
     fixture.componentInstance.setInspection(index, {

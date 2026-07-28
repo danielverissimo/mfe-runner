@@ -170,6 +170,27 @@ export class WorkspaceDialogComponent implements OnChanges {
             : candidate.kindSource === 'user'
               ? candidate.configuredKind
               : undefined;
+        const kind = userKind ?? candidate.suggestedKind ?? '';
+        const localLink = this.mergeLocalLink(
+          current?.localLink ??
+            (candidate.localLibraryLink
+              ? {
+                  packageName: candidate.localLibraryLink.packageName,
+                  developmentScript:
+                    candidate.localLibraryLink.developmentScript,
+                  artifactRelativePath:
+                    candidate.localLibraryLink.artifactRelativePath,
+                  preferredLinkScript:
+                    candidate.localLibraryLink.preferredLinkScript,
+                }
+              : null),
+          candidate.localLinkSuggestion,
+        );
+        const automaticallyLinkable =
+          kind === 'library' &&
+          candidate.suggestedKind === 'library' &&
+          candidate.ecosystem === 'node' &&
+          !!candidate.localLinkSuggestion;
         return {
           name: candidate.name,
           relativePath: candidate.relativePath,
@@ -179,26 +200,15 @@ export class WorkspaceDialogComponent implements OnChanges {
           evidence: candidate.evidence,
           capabilities: candidate.capabilities,
           scripts: candidate.scripts,
-          kind: userKind ?? candidate.suggestedKind ?? '',
+          kind,
           kindSource: userKind ? 'user' : 'detected',
           status: candidate.status ?? (current ? 'existing' : 'new'),
-          linkEnabled: current?.linkEnabled ??
-            candidate.localLibraryLink?.enabled === true,
-          localLink: this.mergeLocalLink(
-            current?.localLink ??
-              (candidate.localLibraryLink
-                ? {
-                    packageName: candidate.localLibraryLink.packageName,
-                    developmentScript:
-                      candidate.localLibraryLink.developmentScript,
-                    artifactRelativePath:
-                      candidate.localLibraryLink.artifactRelativePath,
-                    preferredLinkScript:
-                      candidate.localLibraryLink.preferredLinkScript,
-                  }
-                : null),
-            candidate.localLinkSuggestion,
-          ),
+          linkEnabled: current?.localLink
+            ? current.linkEnabled
+            : candidate.localLibraryLink
+              ? candidate.localLibraryLink.enabled
+              : automaticallyLinkable,
+          localLink,
         };
       }),
     };
@@ -395,11 +405,10 @@ export class WorkspaceDialogComponent implements OnChanges {
           kind: project.kind as ProjectKind,
           kindSource: project.kindSource,
           ...(project.kind === 'library' &&
-          project.linkEnabled &&
           project.localLink
             ? {
                 localLibraryLink: {
-                  enabled: true,
+                  enabled: project.linkEnabled,
                   ...project.localLink,
                 },
               }

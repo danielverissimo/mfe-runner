@@ -1,4 +1,4 @@
-<div class="table-shell">
+<div class="table-shell" (scroll)="closeMenus()">
   <table>
     <thead>
       <tr>
@@ -187,10 +187,18 @@
                     title="Bibliotecas locais"
                     [attr.aria-label]="'Bibliotecas de ' + project.displayName"
                     [attr.aria-expanded]="libraryProjectId === project.id"
-                    (click)="toggleLibraries(project.id)"
+                    (click)="toggleLibraries(project.id, $event)"
                   ><app-runner-icon name="link" [size]="18" /></button>
                   @if (libraryProjectId === project.id) {
-                    <div class="tool-menu__panel library-menu__panel" role="menu">
+                    <div
+                      class="tool-menu__panel library-menu__panel"
+                      role="menu"
+                      [style.top.px]="menuPosition.top"
+                      [style.right.px]="menuPosition.right"
+                      [style.bottom.px]="menuPosition.bottom"
+                      [style.max-height.px]="menuPosition.maxHeight"
+                      (click)="$event.stopPropagation()"
+                    >
                       <strong>Bibliotecas locais</strong>
                       @for (link of project.libraryLinks; track link.libraryId) {
                         <div class="library-link" [attr.data-state]="link.state">
@@ -218,11 +226,19 @@
                   title="Ferramentas do projeto"
                   [attr.aria-label]="'Ferramentas de ' + project.displayName"
                   [attr.aria-expanded]="toolsProjectId === project.id"
-                  (click)="toggleTools(project.id)"
+                  (click)="toggleTools(project.id, $event)"
                   (keydown.escape)="closeTools()"
                 ><app-runner-icon name="more" [size]="19" /></button>
                 @if (toolsProjectId === project.id) {
-                  <div class="tool-menu__panel" role="menu">
+                  <div
+                    class="tool-menu__panel"
+                    role="menu"
+                    [style.top.px]="menuPosition.top"
+                    [style.right.px]="menuPosition.right"
+                    [style.bottom.px]="menuPosition.bottom"
+                    [style.max-height.px]="menuPosition.maxHeight"
+                    (click)="$event.stopPropagation()"
+                  >
                     <button
                       type="button"
                       role="menuitem"

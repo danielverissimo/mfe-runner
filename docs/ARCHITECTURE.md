@@ -65,7 +65,7 @@ dependency, and VCS directories are skipped.
 
 ## Process supervision
 
-Supervisor protocol v2 uses an authenticated local Unix socket on macOS/Linux
+Supervisor protocol v5 uses an authenticated local Unix socket on macOS/Linux
 or a named pipe on Windows. A private random token is required before methods
 or events are accepted.
 
@@ -77,9 +77,16 @@ check. The supervisor is ecosystem-independent and never receives free-form
 renderer commands. Windows wrapper launch is handled by a controlled internal
 launcher; normal child execution remains `shell: false`.
 
-The v1→v2 transition stops the obsolete daemon when possible and removes only
-its scoped socket/pipe, lock, token, and state. Old process/log state may be
-discarded, while private workspace configuration is migrated separately.
+Protocol transitions request a graceful `stopAll` from a recognized obsolete
+daemon before terminating it and removing only its scoped socket/pipe, lock,
+token, and state. The v2→v3 transition ensures that processes and one-shot
+tasks use the runtime environment resolved by the current application instead
+of environment variables inherited by a previously launched daemon. The
+v3→v4 transition makes signal-terminated child processes retryable instead of
+mistaking them for tasks that are still running. The v4→v5 transition disables
+npm audit and funding requests only for local linking tasks so they do not
+depend on registry network availability. Private workspace configuration is
+migrated separately.
 
 When configured to keep processes running, closing Electron disconnects the
 client while the supervisor remains active. It becomes eligible to exit only

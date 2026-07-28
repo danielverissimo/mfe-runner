@@ -31,6 +31,33 @@ function npmInvocation(node, args, platform = process.platform) {
   return { command: node.npmExecutable, args };
 }
 
+function nodeTaskEnvironment(project, baseEnvironment = process.env) {
+  const runtimeEnvironment = project.runtime?.environment ?? {};
+  const binDirectory = project.node?.binDirectory;
+  return {
+    ...baseEnvironment,
+    ...runtimeEnvironment,
+    npm_config_audit: 'false',
+    npm_config_fund: 'false',
+    PATH: [
+      binDirectory,
+      runtimeEnvironment.PATH,
+      baseEnvironment.PATH,
+    ].filter(Boolean).join(path.delimiter),
+    ...(binDirectory ? { NVM_BIN: binDirectory } : {}),
+    ...(binDirectory && process.platform !== 'win32'
+      ? {
+          NVM_INC: path.resolve(
+            binDirectory,
+            '..',
+            'include',
+            'node',
+          ),
+        }
+      : {}),
+  };
+}
+
 export function redactLog(value) {
   return value
     .replace(
@@ -69,6 +96,12 @@ function splitBufferedLines(previous, chunk) {
     remainder: lines.pop() ?? '',
     lines,
   };
+}
+
+function isChildRunning(child) {
+  return Boolean(child?.pid) &&
+    child.exitCode === null &&
+    child.signalCode === null;
 }
 
 async function isPortOpen(port, host = '127.0.0.1', timeout = 500) {
@@ -116,7 +149,7 @@ function healthPathFor(project) {
 }
 
 async function terminateProcessTree(child, signal = 'SIGTERM') {
-  if (!child?.pid || child.exitCode !== null) return;
+  if (!isChildRunning(child)) return;
 
   if (process.platform === 'win32') {
     await new Promise((resolve) => {
@@ -144,7 +177,7 @@ async function terminateProcessTree(child, signal = 'SIGTERM') {
 }
 
 function waitForClose(child, timeout) {
-  if (!child || child.exitCode !== null) return Promise.resolve(true);
+  if (!isChildRunning(child)) return Promise.resolve(true);
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       child.off('close', onClose);
@@ -342,10 +375,7 @@ export class ProcessSupervisor extends EventEmitter {
   }) {
     const key = processKey(workspace.id, project.id);
     const existing = this.#records.get(key);
-    if (
-      existing?.child &&
-      existing.child.exitCode === null
-    ) {
+    if (isChildRunning(existing?.child)) {
       throw new Error(`${project.name} ainda está em execução.`);
     }
     if (
@@ -394,11 +424,7 @@ export class ProcessSupervisor extends EventEmitter {
       {
         cwd: project.absolutePath,
         env: {
-          ...process.env,
-          PATH: [
-            project.node.binDirectory,
-            process.env.PATH,
-          ].filter(Boolean).join(path.delimiter),
+          ...nodeTaskEnvironment(project),
           MFE_RUNNER_WORKSPACE: workspace.name,
           MFE_RUNNER_ENVIRONMENT: workspace.environment,
         },
@@ -471,7 +497,7 @@ export class ProcessSupervisor extends EventEmitter {
 
   async stop(workspaceId, projectId) {
     const record = this.#records.get(processKey(workspaceId, projectId));
-    if (!record?.child || record.child.exitCode !== null) {
+    if (!isChildRunning(record?.child)) {
       if (record?.status === 'conflict') {
         record.status = 'stopped';
         record.message = 'Conflito descartado; nenhum processo externo foi encerrado.';
@@ -573,7 +599,7 @@ export class ProcessSupervisor extends EventEmitter {
 
   #startHealth(record) {
     const update = async () => {
-      if (!record.child || record.child.exitCode !== null) return;
+      if (!isChildRunning(record.child)) return;
       const health = record.launchSpecification?.healthCheck ?? {
         type: record.port ? 'tcp' : 'process',
         port: record.port,
@@ -629,7 +655,9 @@ export class ProcessSupervisor extends EventEmitter {
 
 export const __test__ = {
   healthPathFor,
+  isChildRunning,
   isPortOpen,
+  nodeTaskEnvironment,
   npmInvocation,
   processKey,
   redactLog,
