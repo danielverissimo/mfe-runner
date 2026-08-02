@@ -414,15 +414,6 @@ header button:hover {
   gap: 7px;
 }
 
-.export-content select {
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--runner-border);
-  border-radius: 8px;
-  color: var(--runner-text-secondary);
-  background: var(--runner-control);
-}
-
 .export-content .checkbox {
   display: flex;
   align-items: center;

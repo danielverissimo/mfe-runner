@@ -4,6 +4,25 @@ const channels = Object.freeze({
   getSnapshot: 'runner:get-snapshot',
   listNodeVersions: 'runner:list-node-versions',
   listRuntimeInstallations: 'runner:list-runtime-installations',
+  listFlutterDevices: 'runner:list-flutter-devices',
+  listAndroidEmulators: 'runner:list-android-emulators',
+  launchAndroidEmulator: 'runner:launch-android-emulator',
+  getNgrokStatus: 'runner:get-ngrok-status',
+  listNgrokDomains: 'runner:list-ngrok-domains',
+  createNgrokDomain: 'runner:create-ngrok-domain',
+  startNgrokTunnel: 'runner:start-ngrok-tunnel',
+  stopNgrokTunnel: 'runner:stop-ngrok-tunnel',
+  openNgrokTunnel: 'runner:open-ngrok-tunnel',
+  openNgrokResource: 'runner:open-ngrok-resource',
+  openNgrokConfig: 'runner:open-ngrok-config',
+  chooseNgrokExecutable: 'runner:choose-ngrok-executable',
+  discoverExternalServices: 'runner:discover-external-services',
+  chooseExternalLogFile: 'runner:choose-external-log-file',
+  addExternalService: 'runner:add-external-service',
+  removeExternalService: 'runner:remove-external-service',
+  terminateExternalService: 'runner:terminate-external-service',
+  rebindExternalService: 'runner:rebind-external-service',
+  openExternalServiceAddress: 'runner:open-external-service-address',
   chooseRuntimePath: 'runner:choose-runtime-path',
   openRuntimeDownload: 'runner:open-runtime-download',
   chooseProjectDirectory: 'runner:choose-project-directory',
@@ -58,6 +77,41 @@ contextBridge.exposeInMainWorld('runnerApi', Object.freeze({
   listNodeVersions: () => ipcRenderer.invoke(channels.listNodeVersions),
   listRuntimeInstallations: (input) =>
     ipcRenderer.invoke(channels.listRuntimeInstallations, input),
+  listFlutterDevices: (input) =>
+    ipcRenderer.invoke(channels.listFlutterDevices, input),
+  listAndroidEmulators: (input) =>
+    ipcRenderer.invoke(channels.listAndroidEmulators, input),
+  launchAndroidEmulator: (input) =>
+    ipcRenderer.invoke(channels.launchAndroidEmulator, input),
+  getNgrokStatus: () => ipcRenderer.invoke(channels.getNgrokStatus),
+  listNgrokDomains: () => ipcRenderer.invoke(channels.listNgrokDomains),
+  createNgrokDomain: (input) =>
+    ipcRenderer.invoke(channels.createNgrokDomain, input),
+  startNgrokTunnel: (input) =>
+    ipcRenderer.invoke(channels.startNgrokTunnel, input),
+  stopNgrokTunnel: (input) =>
+    ipcRenderer.invoke(channels.stopNgrokTunnel, input),
+  openNgrokTunnel: (input) =>
+    ipcRenderer.invoke(channels.openNgrokTunnel, input),
+  openNgrokResource: (input) =>
+    ipcRenderer.invoke(channels.openNgrokResource, input),
+  openNgrokConfig: () => ipcRenderer.invoke(channels.openNgrokConfig),
+  chooseNgrokExecutable: (input) =>
+    ipcRenderer.invoke(channels.chooseNgrokExecutable, input),
+  discoverExternalServices: (input) =>
+    ipcRenderer.invoke(channels.discoverExternalServices, input),
+  chooseExternalLogFile: () =>
+    ipcRenderer.invoke(channels.chooseExternalLogFile),
+  addExternalService: (input) =>
+    ipcRenderer.invoke(channels.addExternalService, input),
+  removeExternalService: (input) =>
+    ipcRenderer.invoke(channels.removeExternalService, input),
+  terminateExternalService: (input) =>
+    ipcRenderer.invoke(channels.terminateExternalService, input),
+  rebindExternalService: (input) =>
+    ipcRenderer.invoke(channels.rebindExternalService, input),
+  openExternalServiceAddress: (input) =>
+    ipcRenderer.invoke(channels.openExternalServiceAddress, input),
   chooseRuntimePath: (input) =>
     ipcRenderer.invoke(channels.chooseRuntimePath, input),
   openRuntimeDownload: (input) =>

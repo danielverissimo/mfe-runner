@@ -22,6 +22,7 @@ import {
 import { RunnerApiService } from '../../core/services/runner-api.service';
 import { LogViewStateService } from './log-view-state.service';
 import { ActionTooltipDirective } from '../action-tooltip/action-tooltip.directive';
+import { RunnerSelectComponent } from '../runner-select/runner-select.component';
 
 type CopyState = 'idle' | 'copying' | 'copied' | 'error';
 type ExportState = 'idle' | 'exporting' | 'exported' | 'error';
@@ -30,7 +31,7 @@ type ExportScope = 'workspace' | 'filtered' | 'range';
 @Component({
   selector: 'app-log-panel',
   standalone: true,
-  imports: [DatePipe, ActionTooltipDirective],
+  imports: [DatePipe, ActionTooltipDirective, RunnerSelectComponent],
   templateUrl: './log-panel.component.html',
   styleUrl: './log-panel.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -365,6 +366,12 @@ export class LogPanelComponent
     this.exportScope = this.rangeEntries.length ? 'range' : 'workspace';
     this.includeAbsolutePaths = false;
     this.exportOpen = true;
+  }
+
+  setExportScope(value: string): void {
+    if (value === 'workspace' || value === 'filtered' || value === 'range') {
+      this.exportScope = value;
+    }
   }
 
   async exportDiagnostics(): Promise<void> {

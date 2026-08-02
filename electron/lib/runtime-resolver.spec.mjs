@@ -37,6 +37,46 @@ test('normalizes legacy Java 8 version output before compatibility checks', () =
   assert.equal(__test__.normalizeJavaVersion('openjdk version "21.0.4"'), '21.0.4');
 });
 
+test('normalizes current Flutter machine device fields including iOS simulators', () => {
+  assert.deepEqual(__test__.normalizeFlutterDevices([{
+    name: 'iPhone físico',
+    id: '00008150-device',
+    isSupported: true,
+    targetPlatform: 'ios',
+    emulator: false,
+  }, {
+    name: 'iPhone Simulator',
+    id: 'simulator-id',
+    isSupported: true,
+    targetPlatform: 'ios',
+    emulator: true,
+  }, {
+    name: 'Chrome',
+    id: 'chrome',
+    isSupported: true,
+    targetPlatform: 'web-javascript',
+    emulator: false,
+  }]), [{
+    id: '00008150-device',
+    name: 'iPhone físico',
+    platform: 'ios',
+    available: true,
+    emulator: false,
+  }, {
+    id: 'simulator-id',
+    name: 'iPhone Simulator',
+    platform: 'ios',
+    available: true,
+    emulator: true,
+  }, {
+    id: 'chrome',
+    name: 'Chrome',
+    platform: 'web',
+    available: true,
+    emulator: false,
+  }]);
+});
+
 test('lists runtime installations using a bounded normalized catalog', async () => {
   const catalog = await listRuntimeInstallations({
     ecosystem: 'go',

@@ -1,10 +1,13 @@
 import { Injectable, computed, signal } from '@angular/core';
 import {
+  AndroidEmulator,
   DeveloperToolCatalog,
   DiagnosticExportRequest,
   DiagnosticExportResult,
   Ecosystem,
   ExecutionPolicies,
+  ExternalServiceCatalog,
+  ExternalServiceCreateInput,
   IdePreference,
   LibraryLinkRequest,
   LibraryLinkResult,
@@ -14,12 +17,17 @@ import {
   ProcessRequest,
   RunnerSettings,
   RunnerSnapshot,
+  FlutterDevice,
   RuntimeInstallationCatalog,
   UpdateState,
   WorkspaceInput,
   ProjectSourceInspection,
   ProjectSourceInspectionProgress,
   WorkspaceReview,
+  FlutterProjectTarget,
+  NgrokDomain,
+  NgrokManagedDomainSuffix,
+  NgrokStatus,
 } from '../models/runner.models';
 
 const EMPTY_SNAPSHOT: RunnerSnapshot = {
@@ -43,12 +51,14 @@ const EMPTY_SNAPSHOT: RunnerSnapshot = {
         dotnet: { runtime: { mode: 'auto' } },
         python: { runtime: { mode: 'auto' }, tool: { mode: 'auto' } },
         rust: { runtime: { mode: 'auto' }, tool: { mode: 'auto' } },
-        go: { runtime: { mode: 'auto' } },
+      go: { runtime: { mode: 'auto' } },
+      flutter: { runtime: { mode: 'auto' } },
       },
       theme: 'system',
       stopProcessesOnExit: false,
       logLimit: 1500,
       ide: null,
+      ngrok: { executablePath: null },
     },
     workspaces: [],
   },
@@ -80,6 +90,17 @@ const EMPTY_SNAPSHOT: RunnerSnapshot = {
   supervisorConnected: false,
 };
 
+function bridgeErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  return error.message
+    .replace(
+      /^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/i,
+      '',
+    )
+    .replace(/^(?:Error:\s*)+/i, '')
+    .trim() || fallback;
+}
+
 const EMPTY_NODE_CATALOG: NodeVersionCatalog = {
   detected: false,
   manager: null,
@@ -108,6 +129,23 @@ const EMPTY_UPDATE_STATE: UpdateState = {
   message: 'Verificando suporte a atualizações…',
 };
 
+const EMPTY_NGROK_STATUS: NgrokStatus = {
+  installed: false,
+  available: false,
+  executablePath: null,
+  source: null,
+  version: null,
+  configValid: false,
+  configPath: null,
+  message: 'Verificando a instalação do ngrok…',
+};
+
+const EMPTY_EXTERNAL_CATALOG: ExternalServiceCatalog = {
+  candidates: [],
+  docker: { available: false, message: 'Docker ainda não consultado.' },
+  processMessage: null,
+};
+
 @Injectable({ providedIn: 'root' })
 export class RunnerApiService {
   readonly snapshot = signal<RunnerSnapshot>(EMPTY_SNAPSHOT);
@@ -128,6 +166,15 @@ export class RunnerApiService {
   );
   readonly developerToolsLoading = signal(false);
   readonly updateState = signal<UpdateState>(EMPTY_UPDATE_STATE);
+  readonly ngrokStatus = signal<NgrokStatus>(EMPTY_NGROK_STATUS);
+  readonly ngrokStatusLoading = signal(false);
+  readonly ngrokDomains = signal<NgrokDomain[]>([]);
+  readonly ngrokDomainsLoading = signal(false);
+  readonly ngrokDomainsMessage = signal<string | null>(null);
+  readonly externalServicesCatalog = signal<ExternalServiceCatalog>(
+    EMPTY_EXTERNAL_CATALOG,
+  );
+  readonly externalServicesLoading = signal(false);
 
   private unsubscribeSnapshot?: () => void;
   private unsubscribeLog?: () => void;
@@ -160,6 +207,7 @@ export class RunnerApiService {
       this.run(() => api.getSnapshot()),
       this.refreshNodeVersions(),
       this.refreshDeveloperTools(),
+      this.refreshNgrokStatus(),
       api.getUpdateState().then((state) => this.updateState.set(state)),
     ]);
   }
@@ -303,6 +351,192 @@ export class RunnerApiService {
     } finally {
       this.developerToolsLoading.set(false);
     }
+  }
+
+  listFlutterDevices(workspaceId: string, projectId: string): Promise<{ devices: FlutterDevice[]; message?: string }> {
+    return this.getApi().listFlutterDevices({ workspaceId, projectId });
+  }
+
+  listAndroidEmulators(workspaceId: string, projectId: string): Promise<{ emulators: AndroidEmulator[]; message?: string }> {
+    return this.getApi().listAndroidEmulators({ workspaceId, projectId });
+  }
+
+  launchAndroidEmulator(workspaceId: string, projectId: string, emulatorId: string): Promise<{ started: boolean; emulatorId: string }> {
+    return this.getApi().launchAndroidEmulator({
+      workspaceId,
+      projectId,
+      emulatorId,
+    });
+  }
+
+  async refreshNgrokStatus(): Promise<NgrokStatus> {
+    this.ngrokStatusLoading.set(true);
+    try {
+      const status = await this.getApi().getNgrokStatus();
+      this.ngrokStatus.set(status);
+      return status;
+    } catch (error) {
+      const status = {
+        ...EMPTY_NGROK_STATUS,
+        message: error instanceof Error
+          ? error.message
+          : 'Não foi possível verificar o ngrok.',
+      };
+      this.ngrokStatus.set(status);
+      return status;
+    } finally {
+      this.ngrokStatusLoading.set(false);
+    }
+  }
+
+  async refreshNgrokDomains(): Promise<NgrokDomain[]> {
+    this.ngrokDomainsLoading.set(true);
+    this.ngrokDomainsMessage.set(null);
+    try {
+      const result = await this.getApi().listNgrokDomains();
+      this.ngrokDomains.set(result.domains);
+      return result.domains;
+    } catch (error) {
+      this.ngrokDomains.set([]);
+      this.ngrokDomainsMessage.set(bridgeErrorMessage(
+        error,
+        'Não foi possível listar os domínios do ngrok.',
+      ));
+      return [];
+    } finally {
+      this.ngrokDomainsLoading.set(false);
+    }
+  }
+
+  async createNgrokDomain(
+    name: string,
+    suffix: NgrokManagedDomainSuffix,
+    description?: string,
+  ): Promise<NgrokDomain | null> {
+    this.ngrokDomainsMessage.set(null);
+    try {
+      const result = await this.getApi().createNgrokDomain({
+        name,
+        suffix,
+        description,
+      });
+      if (result.canceled || !result.domain) return null;
+      this.ngrokDomains.update((domains) => [
+        result.domain!,
+        ...domains.filter((item) => item.id !== result.domain!.id),
+      ]);
+      return result.domain;
+    } catch (error) {
+      this.ngrokDomainsMessage.set(bridgeErrorMessage(
+        error,
+        'Não foi possível criar o domínio do ngrok.',
+      ));
+      return null;
+    }
+  }
+
+  startNgrokTunnel(input: {
+    workspaceId: string;
+    projectId: string;
+    domainId: string;
+    domain: string;
+  }): Promise<void> {
+    return this.run(() => this.getApi().startNgrokTunnel(input));
+  }
+
+  stopNgrokTunnel(workspaceId: string, projectId: string): Promise<void> {
+    return this.run(() =>
+      this.getApi().stopNgrokTunnel({ workspaceId, projectId })
+    );
+  }
+
+  openNgrokTunnel(workspaceId: string, projectId: string): Promise<void> {
+    return this.runAction(
+      () => this.getApi().openNgrokTunnel({ workspaceId, projectId }),
+      'Não foi possível abrir o endereço público do ngrok.',
+    );
+  }
+
+  openNgrokResource(
+    resource: 'install' | 'authtoken' | 'apiKey' | 'domains',
+  ): Promise<void> {
+    return this.runAction(
+      () => this.getApi().openNgrokResource({ resource }),
+      'Não foi possível abrir o recurso oficial do ngrok.',
+    );
+  }
+
+  openNgrokConfig(): Promise<void> {
+    return this.runAction(
+      () => this.getApi().openNgrokConfig(),
+      'Não foi possível abrir a configuração do ngrok na IDE.',
+    );
+  }
+
+  chooseNgrokExecutable(initialPath?: string): Promise<string | null> {
+    return this.getApi().chooseNgrokExecutable({ initialPath });
+  }
+
+  async discoverExternalServices(workspaceId: string): Promise<void> {
+    this.externalServicesLoading.set(true);
+    this.error.set(null);
+    try {
+      this.externalServicesCatalog.set(
+        await this.getApi().discoverExternalServices({ workspaceId }),
+      );
+    } catch (error) {
+      this.error.set(bridgeErrorMessage(
+        error,
+        'Não foi possível descobrir serviços externos.',
+      ));
+    } finally {
+      this.externalServicesLoading.set(false);
+    }
+  }
+
+  chooseExternalLogFile(): Promise<{
+    canceled: boolean;
+    filePath: string | null;
+  }> {
+    return this.getApi().chooseExternalLogFile();
+  }
+
+  addExternalService(input: ExternalServiceCreateInput): Promise<void> {
+    return this.run(() => this.getApi().addExternalService(input));
+  }
+
+  removeExternalService(workspaceId: string, serviceId: string): Promise<void> {
+    return this.run(() => this.getApi().removeExternalService({
+      workspaceId,
+      serviceId,
+    }));
+  }
+
+  terminateExternalService(
+    workspaceId: string,
+    serviceId: string,
+  ): Promise<void> {
+    return this.run(() => this.getApi().terminateExternalService({
+      workspaceId,
+      serviceId,
+    }));
+  }
+
+  rebindExternalService(workspaceId: string, serviceId: string): Promise<void> {
+    return this.run(() => this.getApi().rebindExternalService({
+      workspaceId,
+      serviceId,
+    }));
+  }
+
+  openExternalServiceAddress(
+    workspaceId: string,
+    serviceId: string,
+  ): Promise<void> {
+    return this.runAction(
+      () => this.getApi().openExternalServiceAddress({ workspaceId, serviceId }),
+      'Não foi possível abrir o serviço externo.',
+    );
   }
 
   chooseIdeExecutable(initialPath?: string): Promise<string | null> {
@@ -457,6 +691,7 @@ export class RunnerApiService {
     executionPolicies?: ExecutionPolicies,
     defaultCommandId?: string,
     healthCheck?: ProjectHealthCheck,
+    flutterTarget?: FlutterProjectTarget | null,
   ): Promise<void> {
     return this.run(() =>
       this.getApi().updateProject({
@@ -469,6 +704,7 @@ export class RunnerApiService {
         executionPolicies,
         defaultCommandId,
         healthCheck,
+        flutterTarget,
       })
     );
   }

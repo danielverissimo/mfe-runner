@@ -11,6 +11,7 @@ export const ECOSYSTEMS = Object.freeze([
   'python',
   'rust',
   'go',
+  'flutter',
 ]);
 
 export const SUPPORT_LEVELS = Object.freeze({
@@ -21,6 +22,7 @@ export const SUPPORT_LEVELS = Object.freeze({
   python: 'beta',
   rust: 'beta',
   go: 'beta',
+  flutter: 'beta',
 });
 
 const MAX_DESCRIPTOR_BYTES = 2 * 1024 * 1024;
@@ -504,6 +506,61 @@ export class GoProjectDetector {
   }
 }
 
+function flutterCommand(id, label, category, longRunning, target, args = []) {
+  const task = target === 'test' ? 'test' : target.startsWith('build-') ? 'build' : 'run';
+  return {
+    ...command(id, label, category, longRunning, task, args),
+    flutterTarget: target,
+  };
+}
+
+export class FlutterProjectDetector {
+  id = 'flutter';
+  ecosystem = 'flutter';
+  technology = 'Flutter';
+  markerNames = new Set(['pubspec.yaml']);
+
+  async detect(projectPath) {
+    const manifestPath = path.join(projectPath, 'pubspec.yaml');
+    if (!(await exists(manifestPath))) return null;
+    let source = '';
+    try {
+      source = await safeText(manifestPath);
+    } catch {
+      // Keep malformed Flutter metadata visible for review.
+    }
+    const name = source.match(/^name:\s*['"]?([^'"\s#]+)['"]?/m)?.[1] ?? null;
+    const requiredSdk = source.match(/^\s*sdk:\s*['"]?([^'"\s#]+(?:\s+[^'"#]+)*)['"]?\s*$/m)?.[1]?.trim() ?? null;
+    const isFlutter = /^\s+flutter:\s*(?:#.*)?$/m.test(source) ||
+      /^\s+flutter_test:\s*(?:#.*)?$/m.test(source) ||
+      /^flutter:\s*$/m.test(source);
+    if (!isFlutter) return null;
+    const commands = [
+      flutterCommand('flutter:run:web', 'Flutter · Run Web', 'run', true, 'web'),
+      flutterCommand('flutter:run:android', 'Flutter · Run Android', 'run', true, 'android'),
+      flutterCommand('flutter:run:ios', 'Flutter · Run iOS', 'run', true, 'ios'),
+      flutterCommand('flutter:test', 'Flutter · Test', 'test', false, 'test'),
+      flutterCommand('flutter:build:web', 'Flutter · Build Web', 'build', false, 'build-web'),
+      flutterCommand('flutter:build:android', 'Flutter · Build Android', 'build', false, 'build-android'),
+      flutterCommand('flutter:build:ios', 'Flutter · Build iOS', 'build', false, 'build-ios'),
+    ];
+    return {
+      detectorId: this.id,
+      ecosystem: this.ecosystem,
+      technology: this.technology,
+      supportLevel: SUPPORT_LEVELS[this.ecosystem],
+      name: name ?? path.basename(projectPath),
+      suggestedKind: 'project',
+      evidence: ['pubspec.yaml', 'Flutter dependency'],
+      capabilities: ['application'],
+      commands,
+      defaultCommandId: 'flutter:run:web',
+      runtimeRequirements: { flutter: requiredSdk },
+      toolMetadata: { manifestName: name },
+    };
+  }
+}
+
 export const NON_NODE_PROJECT_DETECTORS = [
   new MavenProjectDetector(),
   new GradleProjectDetector(),
@@ -511,6 +568,7 @@ export const NON_NODE_PROJECT_DETECTORS = [
   new PythonProjectDetector(),
   new RustProjectDetector(),
   new GoProjectDetector(),
+  new FlutterProjectDetector(),
 ];
 
 export function directoryHasEcosystemMarker(entries) {

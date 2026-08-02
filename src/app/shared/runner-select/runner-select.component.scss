@@ -1,0 +1,181 @@
+:host {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+:host-context([data-theme="light"]) {
+  --runner-control: #f7f8fb;
+  --runner-control-raised: #ffffff;
+  --runner-runtime-card-border-strong: #b8c2d2;
+  --runner-border: #ccd3df;
+  --runner-primary: #5948e6;
+  --runner-primary-bright: #6656ef;
+  --runner-text: #182033;
+  --runner-text-secondary: #344054;
+  color-scheme: light;
+}
+
+.runner-select__control {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.runner-select__trigger {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  align-items: center;
+  padding: 0 58px 0 12px;
+  border: 1px solid var(--runner-border);
+  border-radius: 9px;
+  outline: 0;
+  color: var(--runner-text-secondary);
+  background: var(--runner-control);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.runner-select__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runner-select__trigger:hover:not(:disabled) {
+  border-color: var(--runner-runtime-card-border-strong);
+}
+
+.runner-select__trigger:focus-visible {
+  border-color: var(--runner-primary-bright);
+  outline: 2px solid color-mix(in srgb, var(--runner-primary-bright) 35%, transparent);
+  outline-offset: 1px;
+}
+
+.runner-select__indicator {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  display: grid;
+  width: 32px;
+  height: 26px;
+  pointer-events: none;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--runner-primary-bright) 32%, var(--runner-border));
+  border-radius: 7px;
+  color: var(--runner-primary-bright);
+  background: color-mix(in srgb, var(--runner-primary) 7%, var(--runner-control-raised));
+  transform: translateY(-50%);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.runner-select__indicator app-runner-icon {
+  transition: transform 140ms ease;
+}
+
+.runner-select__control:hover .runner-select__indicator,
+.runner-select__trigger:focus-visible .runner-select__indicator,
+:host(.runner-select--open) .runner-select__indicator {
+  border-color: color-mix(in srgb, var(--runner-primary-bright) 55%, var(--runner-border));
+  background: color-mix(in srgb, var(--runner-primary) 12%, var(--runner-control-raised));
+}
+
+:host(.runner-select--open) .runner-select__indicator app-runner-icon {
+  transform: rotate(180deg);
+}
+
+.runner-select__source {
+  display: none;
+}
+
+.runner-select__menu {
+  position: fixed;
+  inset: auto;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 5px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  z-index: 10000;
+  border: 1px solid var(--runner-border);
+  border-radius: 9px;
+  color: var(--runner-text-secondary);
+  background: var(--runner-control-raised);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--runner-text) 18%, transparent);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.runner-select__menu[hidden] {
+  display: none;
+}
+
+.runner-select__option {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.runner-select__option--active:not(.runner-select__option--disabled) {
+  background: color-mix(in srgb, var(--runner-primary) 9%, var(--runner-control-raised));
+}
+
+.runner-select__option--selected:not(.runner-select__option--disabled) {
+  color: var(--runner-primary-bright);
+  background: color-mix(in srgb, var(--runner-primary) 13%, var(--runner-control-raised));
+  font-weight: 650;
+}
+
+.runner-select__option--disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.runner-select__check {
+  flex: 0 0 auto;
+  color: var(--runner-primary-bright);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+:host(.runner-select--compact) .runner-select__trigger {
+  height: 36px;
+  padding-right: 54px;
+  font-size: 11px;
+}
+
+:host(.runner-select--compact) .runner-select__indicator {
+  width: 30px;
+  height: 24px;
+}
+
+.runner-select__menu--compact {
+  font-size: 11px;
+}
+
+.runner-select__menu--compact .runner-select__option {
+  min-height: 30px;
+  padding: 6px 8px;
+}
+
+:host(.runner-select--disabled) {
+  opacity: .55;
+}
+
+:host(.runner-select--disabled) .runner-select__trigger {
+  cursor: not-allowed;
+}

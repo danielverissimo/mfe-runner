@@ -13,6 +13,8 @@ import {
   DiscoveredProject,
   ExecutionPolicies,
   ExecutionPolicyMode,
+  FlutterDevice,
+  FlutterProjectTarget,
   NodePolicy,
   NodePolicyMode,
   NodeVersionCatalog,
@@ -21,6 +23,7 @@ import {
 } from '../../core/models/runner.models';
 import { NodeVersionPickerComponent } from '../node-version-picker/node-version-picker.component';
 import { ActionTooltipDirective } from '../action-tooltip/action-tooltip.directive';
+import { RunnerSelectComponent } from '../runner-select/runner-select.component';
 
 export interface ProjectSettingsChange {
   nodePolicy: NodePolicy;
@@ -30,12 +33,18 @@ export interface ProjectSettingsChange {
   libraryLinkScripts: Record<string, string>;
   startupOrder: number;
   healthCheck: ProjectHealthCheck;
+  flutterTarget?: FlutterProjectTarget | null;
 }
 
 @Component({
   selector: 'app-project-settings-dialog',
   standalone: true,
-  imports: [FormsModule, NodeVersionPickerComponent, ActionTooltipDirective],
+  imports: [
+    FormsModule,
+    NodeVersionPickerComponent,
+    ActionTooltipDirective,
+    RunnerSelectComponent,
+  ],
   templateUrl: './project-settings-dialog.component.html',
   styleUrl: './project-settings-dialog.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -47,9 +56,12 @@ export class ProjectSettingsDialogComponent implements OnChanges {
   @Input({ required: true }) nodeVersions!: NodeVersionCatalog;
   @Input() nodeVersionsLoading = false;
   @Input() saving = false;
+  @Input() flutterDevices: FlutterDevice[] = [];
+  @Input() flutterDevicesLoading = false;
   @Output() dismiss = new EventEmitter<void>();
   @Output() saveSettings = new EventEmitter<ProjectSettingsChange>();
   @Output() refreshNodeVersions = new EventEmitter<void>();
+  @Output() refreshFlutterDevices = new EventEmitter<void>();
 
   nodeMode: NodePolicyMode = 'inherit';
   nodeVersion = '';
@@ -64,6 +76,9 @@ export class ProjectSettingsDialogComponent implements OnChanges {
   healthCheckType: ProjectHealthCheck['type'] = 'process';
   healthCheckPort: number | null = null;
   healthCheckPath = '/';
+  flutterPlatform: FlutterProjectTarget['platform'] = 'web';
+  flutterDeviceId = '';
+  flutterDeviceName = '';
 
   ngOnChanges(changes: SimpleChanges): void {
     if (
@@ -137,6 +152,15 @@ export class ProjectSettingsDialogComponent implements OnChanges {
           ? { path: this.healthCheckPath.trim() }
           : {}),
       },
+      ...(this.project.ecosystem === 'flutter'
+        ? {
+            flutterTarget: {
+              platform: this.flutterPlatform,
+              ...(this.flutterDeviceId.trim() ? { deviceId: this.flutterDeviceId.trim() } : {}),
+              ...(this.flutterDeviceName.trim() ? { deviceName: this.flutterDeviceName.trim() } : {}),
+            },
+          }
+        : {}),
     });
   }
 
@@ -219,6 +243,9 @@ export class ProjectSettingsDialogComponent implements OnChanges {
     this.healthCheckType = healthCheck.type;
     this.healthCheckPort = healthCheck.port ?? this.project.port;
     this.healthCheckPath = healthCheck.path ?? '/';
+    this.flutterPlatform = override?.flutterTarget?.platform ?? 'web';
+    this.flutterDeviceId = override?.flutterTarget?.deviceId ?? '';
+    this.flutterDeviceName = override?.flutterTarget?.deviceName ?? '';
     this.libraryLinkScripts = {
       ...(override?.libraryLinkScripts ?? {}),
     };

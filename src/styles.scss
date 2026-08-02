@@ -106,14 +106,113 @@ body {
   color: var(--runner-text);
 }
 
+.ngrok-status {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.ngrok-status__row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+
+.ngrok-status__row--config {
+  grid-template-columns: 110px minmax(0, 1fr) max-content;
+  padding-top: 4px;
+}
+
+.ngrok-status__path {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ngrok-status__open {
+  min-width: 134px;
+  margin-left: 16px;
+}
+
+.ngrok-command-list {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+}
+
+.ngrok-command {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--runner-border-soft);
+  border-radius: 9px;
+  background: var(--runner-control);
+}
+
+.ngrok-command__content {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.ngrok-command__content small {
+  color: var(--runner-text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.ngrok-command code {
+  overflow-wrap: anywhere;
+  color: var(--runner-text);
+  font-size: 10px;
+}
+
+.ngrok-command__copy {
+  width: 96px;
+  justify-self: end;
+}
+
+.button--compact {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+@media (max-width: 700px) {
+  .ngrok-status__row,
+  .ngrok-status__row--config {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 5px;
+  }
+
+  .ngrok-status__open {
+    justify-self: start;
+    margin-top: 6px;
+    margin-left: 0;
+  }
+
+  .ngrok-command {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .ngrok-command__copy {
+    justify-self: start;
+  }
+}
+
 body[data-theme="light"] {
   background: #f3f5fa;
   color: #182033;
 }
 
 button,
-input,
-select {
+input {
   font: inherit;
 }
 
@@ -122,8 +221,7 @@ button {
 }
 
 button:focus-visible,
-input:focus-visible,
-select:focus-visible {
+input:focus-visible {
   outline: 2px solid var(--runner-primary-bright);
   outline-offset: 2px;
 }
@@ -174,8 +272,7 @@ select:focus-visible {
     color: var(--runner-text-muted);
   }
 
-  input,
-  select {
+  input {
     color: var(--runner-text-secondary) !important;
     background: var(--runner-control) !important;
   }
@@ -185,7 +282,6 @@ select:focus-visible {
     table,
     th,
     code,
-    .script-select,
     .tool-menu__panel,
     .library-link,
     .icon-button {
@@ -213,7 +309,6 @@ select:focus-visible {
     .source-filter-panel,
     .source-filter-option,
     .export-dialog,
-    .export-content select,
     .export-dialog footer button {
       color: var(--runner-text-secondary) !important;
       background: var(--runner-control) !important;
@@ -237,7 +332,6 @@ select:focus-visible {
 
     .dialog,
     input,
-    select,
     .source-card,
     .candidate,
     .form-section,

@@ -237,8 +237,12 @@ function launchDetached(executablePath, args, options = {}) {
   });
 }
 
-export async function openProjectInIde(projectPath, settings = {}) {
-  const catalog = await listDeveloperTools(settings);
+export async function openPathInIde(
+  targetPath,
+  settings = {},
+  dependencies = {},
+) {
+  const catalog = await (dependencies.listTools ?? listDeveloperTools)(settings);
   const ide = catalog.ideApplications.find(
     (item) => item.id === catalog.selectedIdeId,
   );
@@ -247,7 +251,11 @@ export async function openProjectInIde(projectPath, settings = {}) {
       'Nenhuma IDE configurada está disponível. Escolha uma em Configurações.',
     );
   }
-  await launchDetached(ide.executablePath, [projectPath]);
+  await (dependencies.launch ?? launchDetached)(ide.executablePath, [targetPath]);
+}
+
+export async function openProjectInIde(projectPath, settings = {}) {
+  await openPathInIde(projectPath, settings);
 }
 
 export async function openProjectTerminal(projectPath) {

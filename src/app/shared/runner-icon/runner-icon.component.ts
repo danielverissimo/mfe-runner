@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 export type RunnerIconName =
   | 'activity'
+  | 'chevron-down'
+  | 'copy'
   | 'diamond'
   | 'external'
   | 'git'

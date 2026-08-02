@@ -27,4 +27,17 @@ describe('I18nService', () => {
 
     expect(service.translate('npm run start')).toBe('npm run start');
   });
+
+  it('translates the external-service flow in every secondary language', () => {
+    const service = TestBed.inject(I18nService);
+
+    expect(service.translate('Vincular serviço externo', 'es'))
+      .toBe('Vincular servicio externo');
+    expect(service.translate('Vincular serviço externo', 'en'))
+      .toBe('Link external service');
+    expect(service.translate('Vincular serviço externo', 'fr'))
+      .toBe('Associer un service externe');
+    expect(service.translate('Identidade alterada', 'en'))
+      .toBe('Identity changed');
+  });
 });

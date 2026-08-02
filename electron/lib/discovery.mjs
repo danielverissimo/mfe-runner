@@ -302,6 +302,7 @@ export async function discoverWorkspace(workspace, globalExecutionPolicies = {})
           ) ??
           findPortInAngularConfig(candidate.angularConfig),
         healthCheck: override.healthCheck ?? null,
+        flutterTarget: override.flutterTarget ?? null,
         federation: candidate.federation
           ? { name: candidate.federation.name, exposes: candidate.federation.exposes }
           : null,

@@ -1,0 +1,168 @@
+@if (open) {
+  <div class="backdrop" (click)="!starting && dismiss.emit()" aria-hidden="true"></div>
+  <section
+    class="dialog"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-busy]="busy()"
+    aria-labelledby="flutter-launch-title"
+    aria-describedby="flutter-launch-description"
+  >
+    <header>
+      <div class="dialog__icon" aria-hidden="true">▶</div>
+      <div>
+        <span>Flutter · {{ actionLabel() }}</span>
+        <h2 id="flutter-launch-title">Escolha o destino</h2>
+        <p id="flutter-launch-description">{{ project.displayName }}</p>
+      </div>
+      <button
+        class="close-button"
+        type="button"
+        aria-label="Fechar seleção de destino Flutter"
+        [disabled]="starting"
+        (click)="dismiss.emit()"
+      >×</button>
+    </header>
+
+    @if (starting || (loading && platform === 'web')) {
+      <div class="dialog-loading" role="status" aria-live="polite">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <strong>{{ starting ? 'Iniciando Flutter…' : 'Consultando devices Flutter…' }}</strong>
+      </div>
+    }
+
+    <form (ngSubmit)="submit()">
+      <fieldset>
+        <legend>Plataforma</legend>
+        <div class="platform-options">
+          @for (option of ['web', 'android', 'ios']; track option) {
+            <label [class.active]="platform === option">
+              <input
+                type="radio"
+                name="flutterPlatform"
+                [value]="option"
+                [checked]="platform === option"
+                [disabled]="starting || emulatorBooting"
+                (change)="setPlatform($any(option))"
+              >
+              <strong>{{ option === 'web' ? 'Web' : option === 'android' ? 'Android' : 'iOS' }}</strong>
+              <small>{{ option === 'web' ? 'Chrome, sem seleção de device' : option === 'android' ? 'Device ou emulador Android' : 'Device ou simulador iOS' }}</small>
+            </label>
+          }
+        </div>
+      </fieldset>
+
+      @if (platform !== 'web') {
+        <section class="device-section" aria-live="polite">
+          <div class="section-heading">
+            <div>
+              <strong>Dispositivo {{ platform === 'android' ? 'Android' : 'iOS' }}</strong>
+              <small>Escolha um device disponível para continuar.</small>
+            </div>
+            <button
+              class="button button--ghost"
+              type="button"
+              [disabled]="busy()"
+              (click)="refreshDevices.emit()"
+            >{{ loading ? 'Atualizando…' : 'Atualizar' }}</button>
+          </div>
+
+          @if (loading) {
+            <div class="device-state device-state--loading" role="status">
+              <span class="loading-spinner loading-spinner--small" aria-hidden="true"></span>
+              <span>Consultando devices Flutter…</span>
+            </div>
+          } @else if (!hasAvailableDevice()) {
+            <div class="device-state device-state--warning" role="status">
+              Nenhum dispositivo {{ platform === 'android' ? 'Android' : 'iOS' }} foi encontrado.
+            </div>
+            @if (platform === 'android') {
+              <section class="emulator-fallback" aria-labelledby="android-emulator-title">
+                <div class="section-heading">
+                  <div>
+                    <strong id="android-emulator-title">Emuladores disponíveis para iniciar</strong>
+                    <small>Escolha um Android Virtual Device configurado neste computador.</small>
+                  </div>
+                  <button
+                    class="button button--ghost"
+                    type="button"
+                    [disabled]="busy() || emulatorsLoading"
+                    (click)="refreshEmulators.emit()"
+                  >{{ emulatorsLoading ? 'Atualizando…' : 'Atualizar AVDs' }}</button>
+                </div>
+
+                @if (emulatorBooting) {
+                  <div class="device-state emulator-state--booting" role="status">
+                    <span class="loading-spinner loading-spinner--small" aria-hidden="true"></span>
+                    <span>{{ emulatorMessage || 'Aguardando o Android Emulator ficar disponível no Flutter…' }}</span>
+                  </div>
+                } @else if (emulatorsLoading) {
+                  <div class="device-state device-state--loading" role="status">
+                    <span class="loading-spinner loading-spinner--small" aria-hidden="true"></span>
+                    <span>Consultando Android Virtual Devices…</span>
+                  </div>
+                } @else if (!emulators.length) {
+                  <div class="device-state device-state--warning" role="status">
+                    {{ emulatorMessage || 'Nenhum Android Virtual Device configurado foi encontrado.' }}
+                  </div>
+                } @else {
+                  <div class="emulator-picker-row">
+                    <label class="device-picker">
+                      Android Virtual Device
+                      <app-runner-select name="androidEmulator" [(ngModel)]="emulatorId" [disabled]="busy()">
+                        <option value="">Selecione um emulator</option>
+                        @for (emulator of emulators; track emulator.id) {
+                          <option [value]="emulator.id">{{ emulator.name }}</option>
+                        }
+                      </app-runner-select>
+                    </label>
+                    <button
+                      class="button button--emulator"
+                      type="button"
+                      [disabled]="!selectedEmulator() || busy()"
+                      (click)="startSelectedEmulator()"
+                    >{{ starting ? 'Iniciando…' : 'Iniciar emulador' }}</button>
+                  </div>
+                  @if (emulatorMessage) {
+                    <div class="device-state device-state--warning" role="status">
+                      {{ emulatorMessage }}
+                    </div>
+                  }
+                }
+              </section>
+            }
+          } @else {
+            <label class="device-picker">
+              Device
+              <app-runner-select name="flutterDevice" [(ngModel)]="deviceId" [disabled]="starting || emulatorBooting">
+                <option value="">Selecione um dispositivo</option>
+                @for (device of availableDevices(); track device.id) {
+                  <option [value]="device.id" [disabled]="!device.available">
+                    {{ device.name }} · {{ device.emulator ? 'Emulador/Simulador' : 'Físico' }}{{ device.available ? '' : ' · Indisponível' }}
+                  </option>
+                }
+              </app-runner-select>
+            </label>
+          }
+        </section>
+      } @else {
+        <div class="web-note">
+          <span aria-hidden="true">✓</span>
+          O Runner usará o Chrome detectado pelo Flutter. Nenhum device precisa ser escolhido.
+        </div>
+      }
+
+      <footer>
+        <button class="button button--ghost" type="button" [disabled]="starting" (click)="dismiss.emit()">
+          Cancelar
+        </button>
+        <button class="button button--primary" type="submit" [disabled]="!canLaunch()">
+          @if (starting || loading) {
+            <span class="loading-spinner loading-spinner--button" aria-hidden="true"></span>
+          }
+          {{ starting ? 'Iniciando…' : loading ? 'Carregando…' : actionLabel() + ' no ' + (platform === 'ios' ? 'iOS' : platform === 'android' ? 'Android' : 'Web') }}
+        </button>
+      </footer>
+    </form>
+  </section>
+}

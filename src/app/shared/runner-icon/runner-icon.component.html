@@ -7,6 +7,9 @@
   [attr.data-icon]="name"
 >
   @switch (name) {
+    @case ('chevron-down') {
+      <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
+    }
     @case ('play') {
       <path d="M8.25 5.75 18 12l-9.75 6.25V5.75Z" />
     }
@@ -32,6 +35,10 @@
       <path d="m9.5 14.5 5-5" />
       <path d="m7.75 17.75-1 .95a3.2 3.2 0 0 1-4.45-4.6l3.15-3.05a3.2 3.2 0 0 1 4.45 0" />
       <path d="m16.25 6.25 1-.95a3.2 3.2 0 0 1 4.45 4.6l-3.15 3.05a3.2 3.2 0 0 1-4.45 0" />
+    }
+    @case ('copy') {
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
     }
     @case ('settings') {
       <circle cx="12" cy="12" r="3" />

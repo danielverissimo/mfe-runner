@@ -10,8 +10,11 @@ import path from 'node:path';
 import {
   validateEnvironment,
   validateExecutionPolicies,
+  validateExternalServiceConfig,
   validateHealthCheck,
+  validateFlutterTarget,
   validateIdePreference,
+  validateNgrokPreference,
   validateNodePolicy,
   validateWorkspaceInput,
 } from './contracts.mjs';
@@ -37,11 +40,13 @@ export const DEFAULT_CONFIG = Object.freeze({
       python: { runtime: { mode: 'auto' }, tool: { mode: 'auto' } },
       rust: { runtime: { mode: 'auto' }, tool: { mode: 'auto' } },
       go: { runtime: { mode: 'auto' } },
+      flutter: { runtime: { mode: 'auto' } },
     },
     theme: 'system',
     stopProcessesOnExit: false,
     logLimit: 1500,
     ide: null,
+    ngrok: { executablePath: null },
   },
   workspaces: [],
 });
@@ -75,6 +80,9 @@ function sanitizeProjectOverrides(overrides) {
         }
         if (value.healthCheck) {
           result.healthCheck = validateHealthCheck(value.healthCheck);
+        }
+        if (value.flutterTarget) {
+          result.flutterTarget = validateFlutterTarget(value.flutterTarget);
         }
         if (
           typeof value.defaultCommandId === 'string' &&
@@ -214,6 +222,15 @@ function sanitizeWorkspace(value) {
       excludedProjectIds: sanitizeExcludedProjectIds(
         value.excludedProjectIds,
       ),
+      externalServices: Array.isArray(value.externalServices)
+        ? value.externalServices.flatMap((service) => {
+            try {
+              return [validateExternalServiceConfig(service)];
+            } catch {
+              return [];
+            }
+          })
+        : [],
     };
   } catch {
     return null;
@@ -249,6 +266,7 @@ function sanitizeConfig(value) {
       ? Math.min(Math.max(settings.logLimit, 200), 10000)
       : base.settings.logLimit,
     ide: sanitizeIdePreference(settings.ide),
+    ngrok: validateNgrokPreference(settings.ngrok),
   };
   base.workspaces = Array.isArray(value.workspaces)
     ? value.workspaces.map(sanitizeWorkspace).filter(Boolean)
@@ -324,6 +342,7 @@ function migrateV4(value) {
       ? Math.min(Math.max(settings.logLimit, 200), 10000)
       : base.settings.logLimit,
     ide: sanitizeIdePreference(settings.ide),
+    ngrok: validateNgrokPreference(settings.ngrok),
   };
   base.workspaces = (Array.isArray(value.workspaces) ? value.workspaces : [])
     .flatMap((workspace) => {
@@ -460,6 +479,7 @@ export class ConfigStore {
       projectOverrides: {},
       projectOrder: [],
       excludedProjectIds: [],
+      externalServices: [],
     };
     this.#config.workspaces.push(workspace);
     await this.#save();
@@ -544,6 +564,47 @@ export class ConfigStore {
     await this.#save();
   }
 
+  async addExternalService(workspaceId, input) {
+    const workspace = this.#findWorkspace(workspaceId);
+    const service = validateExternalServiceConfig({
+      ...input,
+      id: input.id ?? `external-service:${randomUUID()}`,
+    });
+    workspace.externalServices ??= [];
+    if (workspace.externalServices.some((item) =>
+      item.host === service.host && item.port === service.port
+    )) {
+      throw new Error(
+        `O endereço ${service.host}:${service.port} já está vinculado nesta workspace.`,
+      );
+    }
+    workspace.externalServices.push(service);
+    await this.#save();
+    return structuredClone(service);
+  }
+
+  async removeExternalService(workspaceId, serviceId) {
+    const workspace = this.#findWorkspace(workspaceId);
+    const before = workspace.externalServices?.length ?? 0;
+    workspace.externalServices = (workspace.externalServices ?? [])
+      .filter((service) => service.id !== serviceId);
+    if (workspace.externalServices.length === before) {
+      throw new Error('Serviço externo não encontrado.');
+    }
+    await this.#save();
+  }
+
+  async replaceExternalService(workspaceId, serviceId, input) {
+    const workspace = this.#findWorkspace(workspaceId);
+    const index = (workspace.externalServices ?? [])
+      .findIndex((service) => service.id === serviceId);
+    if (index === -1) throw new Error('Serviço externo não encontrado.');
+    const service = validateExternalServiceConfig({ ...input, id: serviceId });
+    workspace.externalServices[index] = service;
+    await this.#save();
+    return structuredClone(service);
+  }
+
   async updateSettings(input) {
     const settings = input && typeof input === 'object' ? input : {};
     if (settings.globalNodePolicy !== undefined) {
@@ -579,6 +640,9 @@ export class ConfigStore {
     if (settings.ide !== undefined) {
       this.#config.settings.ide = validateIdePreference(settings.ide);
     }
+    if (settings.ngrok !== undefined) {
+      this.#config.settings.ngrok = validateNgrokPreference(settings.ngrok);
+    }
     await this.#save();
     return structuredClone(this.#config.settings);
   }
@@ -599,6 +663,13 @@ export class ConfigStore {
     }
     if (input.healthCheck !== undefined) {
       override.healthCheck = validateHealthCheck(input.healthCheck);
+    }
+    if (input.flutterTarget !== undefined) {
+      if (input.flutterTarget) {
+        override.flutterTarget = validateFlutterTarget(input.flutterTarget);
+      } else {
+        delete override.flutterTarget;
+      }
     }
     if (input.defaultCommandId !== undefined) {
       if (input.defaultCommandId) {

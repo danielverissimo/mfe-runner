@@ -1,0 +1,76 @@
+<div class="runner-select__control">
+  <button
+    #trigger
+    class="runner-select__trigger"
+    type="button"
+    role="combobox"
+    aria-haspopup="listbox"
+    aria-autocomplete="none"
+    [disabled]="effectiveDisabled"
+    [attr.id]="id"
+    [attr.aria-label]="ariaLabel"
+    [attr.aria-describedby]="ariaDescribedBy"
+    [attr.aria-expanded]="open"
+    [attr.aria-controls]="listboxId"
+    [attr.aria-activedescendant]="activeOptionId"
+    (click)="handleTriggerClick()"
+    (keydown)="handleTriggerKeydown($event)"
+    (blur)="handleTriggerBlur()"
+  >
+    <span class="runner-select__value">{{ selectedLabel }}</span>
+    <span class="runner-select__indicator" aria-hidden="true">
+      <app-runner-icon
+        name="chevron-down"
+        [size]="size === 'compact' ? 13 : 14"
+      />
+    </span>
+  </button>
+
+  <select
+    #nativeSelect
+    class="runner-select__source"
+    tabindex="-1"
+    aria-hidden="true"
+    [value]="currentValue"
+    [disabled]="effectiveDisabled"
+    [attr.name]="name"
+    (change)="handleNativeChange($event)"
+  >
+    <ng-content />
+  </select>
+</div>
+
+<div
+  #menu
+  class="runner-select__menu"
+  [class.runner-select__menu--compact]="size === 'compact'"
+  [hidden]="!open"
+  role="listbox"
+  [attr.id]="listboxId"
+  [attr.aria-label]="ariaLabel"
+  [style.top.px]="menuTop"
+  [style.left.px]="menuLeft"
+  [style.width.px]="menuWidth"
+  [style.max-height.px]="menuMaxHeight"
+>
+  @for (option of optionItems; track $index) {
+    <div
+      class="runner-select__option"
+      role="option"
+      [class.runner-select__option--active]="$index === activeIndex"
+      [class.runner-select__option--selected]="option.value === currentValue"
+      [class.runner-select__option--disabled]="option.disabled"
+      [attr.id]="getOptionId($index)"
+      [attr.aria-selected]="option.value === currentValue"
+      [attr.aria-disabled]="option.disabled"
+      (mousedown)="$event.preventDefault()"
+      (mouseenter)="setActiveIndex($index)"
+      (click)="selectOption($index)"
+    >
+      <span>{{ option.label }}</span>
+      @if (option.value === currentValue) {
+        <span class="runner-select__check" aria-hidden="true">✓</span>
+      }
+    </div>
+  }
+</div>

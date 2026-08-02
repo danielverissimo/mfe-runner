@@ -151,6 +151,30 @@ export class SupervisorClient extends EventEmitter {
     });
   }
 
+  startNgrok(workspaceId, projectId, launchSpecification) {
+    return this.#request('startNgrok', {
+      workspaceId,
+      projectId,
+      launchSpecification,
+    });
+  }
+
+  stopNgrok(workspaceId, projectId) {
+    return this.#request('stopNgrok', { workspaceId, projectId });
+  }
+
+  attachExternal(payload) {
+    return this.#request('attachExternal', payload);
+  }
+
+  detachExternal(workspaceId, serviceId) {
+    return this.#request('detachExternal', { workspaceId, serviceId });
+  }
+
+  reconcileExternal(workspace, services) {
+    return this.#request('reconcileExternal', { workspace, services });
+  }
+
   async #connectOrStartInternal() {
     this.#token ??= await ensureSupervisorToken(this.userDataPath);
     try {

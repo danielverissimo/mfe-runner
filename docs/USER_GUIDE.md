@@ -3,7 +3,7 @@
 MFE Runner is a desktop control center for local applications, services,
 frontends, monoliths, monorepos, micro frontends, and shared libraries. A
 project does not need to use Angular or micro frontend architecture. Node.js
-support is stable. Java/Maven, Java/Gradle, .NET, Python, Rust, and Go are Beta
+support is stable. Java/Maven, Java/Gradle, .NET, Python, Rust, Go, and Flutter are Beta
 integrations and are labeled as such in the workspace.
 
 ## Workspaces
@@ -104,6 +104,97 @@ and structured run/test/build commands. Python launches the resolved
 interpreter directly. Go sets `GOTOOLCHAIN=path` so a command cannot download a
 toolchain automatically. Review diagnostics and command profiles before use,
 and report platform-specific gaps with a minimal fixture when possible.
+
+### Flutter (Beta)
+
+Flutter applications are detected from `pubspec.yaml`. The command selector is
+reduced to Run, Test, and Build. When an individual Flutter action is started,
+the Runner opens a target dialog for Web, Android, or iOS. Web does not require
+a device; Android and iOS require selecting an available physical device,
+emulator, or simulator from the refreshed Flutter catalog. FVM is resolved
+automatically from the project-local SDK link or its metadata before falling
+back to a Flutter installation already available on the machine. Flutter and
+FVM are never installed automatically. When Android has no running device, the
+same dialog lists AVDs already configured in the local Android SDK. Starting an
+AVD keeps the dialog open until Flutter detects it, then continues the selected
+Run, Test, or Build action automatically. Closing the Runner or stopping the
+project does not close that emulator. The Runner does not create, repair, or
+install AVDs.
+
+When running on Web, the Runner assigns an available local port to Flutter and
+shows it in the **Port** column. The local-address and ngrok actions use this
+same HTTP port, which is hidden again after the process stops.
+
+## Publishing a process with ngrok
+
+Open **Settings > ngrok** to check the local installation and the configuration
+file selected by the ngrok CLI. If the agent is missing, use the operating
+system-specific guidance and the official installation page. MFE Runner does
+not run package managers or installers.
+
+Configure the authtoken and API key outside the Runner with the official ngrok
+configuration commands. The authtoken starts the HTTP endpoint; the API key
+lists or creates reserved domains. They are distinct credentials and remain
+exclusively in ngrok's configuration. Use **Test API access** to query the
+account explicitly.
+
+Use the individual **Copy** buttons to copy either credential command with its
+placeholder. Replace the placeholder only in your terminal; the Runner does
+not request the credential value. When a valid configuration file is detected,
+**Open in editor** opens that exact file using the IDE selected in Settings.
+If no compatible IDE is configured, select one in the developer-tools section
+before trying again.
+
+For a running project with a known port, choose **Link ngrok** in the project
+row, refresh the reserved-domain catalog, and select an exact hostname. A new
+domain can be created by entering only its short name and choosing one of the
+ngrok suffixes shown by the Runner. A full hostname cannot be entered manually.
+The dialog identifies matching domains already present in the account. For a
+new domain, ngrok confirms final availability when the user requests creation;
+an unavailable suffix remains marked so another option can be selected.
+Creation continues only after confirming the plan/billing warning. When ngrok
+returns a CNAME target, configure that DNS record before relying on the public
+URL. Wildcards are visible but incompatible with this version.
+
+An online tunnel can be opened, copied, or stopped from the same row. Stopping
+the project also stops its tunnel. Restarting the project with **Restart**
+restores it after the project is ready; stopping and starting manually does
+not. If the interface closes under the keep-running policy, both remain in the
+local supervisor.
+
+## Linking a service started elsewhere
+
+Choose **Link external service** above the process table when an application is
+already running in IntelliJ, Docker, another terminal, or on a reachable host.
+The **Discovered** tab lists eligible local TCP listeners and running Docker
+containers with published ports. Refresh is explicit; the Runner does not scan
+continuously. A port already associated with a workspace project, managed
+process, or linked service is omitted.
+
+The **Add manually** tab accepts a name, HTTP/HTTPS scheme, host, and TCP port.
+Use it for remote or network services as well as local services that cannot be
+identified automatically. A Docker container with multiple published ports is
+listed once per eligible host port so the intended upstream is explicit.
+
+Docker services use `docker container logs --follow`. For a generic process,
+select an optional application log file. MFE Runner can follow existing and new
+content and handles truncation or rotation, but it cannot recover stdout/stderr
+already captured by IntelliJ. Configure the application to write a log file if
+that output must appear in the Runner. Without a log source, only monitoring,
+identity, ngrok, and Runner action events are shown.
+
+External rows can open or copy the upstream address and link ngrok while they
+are online. Going offline stops the collector and ngrok. The Runner reconnects
+monitoring when the same identity returns, but public exposure is never restored
+automatically. A reused port with a different PID is marked **Identity changed**
+until the user confirms the new binding.
+
+**Unlink without stopping** only removes the saved definition and Runner-owned
+collectors/tunnels. **Stop external service** is separate, requires confirmation,
+and is available only for a revalidated local process or Docker container.
+Remote services cannot be stopped. Global project actions and exit policy never
+terminate external services. Docker must already be installed and its daemon
+available; MFE Runner does not install or configure it.
 
 ## Health checks
 

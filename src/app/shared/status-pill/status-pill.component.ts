@@ -27,6 +27,10 @@ export class StatusPillComponent {
       stopping: 'Parando',
       failed: 'Falhou',
       conflict: 'Conflito',
+      connecting: 'Conectando',
+      online: 'Online',
+      offline: 'Offline',
+      'identity-mismatch': 'Identidade alterada',
     }[this.status];
   }
 }

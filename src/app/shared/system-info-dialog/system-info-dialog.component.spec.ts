@@ -44,4 +44,16 @@ describe('SystemInfoDialogComponent', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(fixture.componentInstance.dismiss.emit).toHaveBeenCalledOnceWith();
   });
+
+  it('uses light theme tokens for system information surfaces', () => {
+    fixture.nativeElement.setAttribute('data-theme', 'light');
+    fixture.detectChanges();
+
+    const dialog: HTMLElement = fixture.nativeElement.querySelector('.dialog');
+    const section: HTMLElement = fixture.nativeElement.querySelector('.info-section');
+
+    expect(getComputedStyle(dialog).backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(dialog).color).toBe('rgb(24, 32, 51)');
+    expect(getComputedStyle(section).backgroundColor).toBe('rgb(238, 241, 246)');
+  });
 });

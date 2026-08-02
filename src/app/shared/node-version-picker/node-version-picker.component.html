@@ -3,16 +3,17 @@
     @if (catalog.detected && catalog.versions.length) {
       <label>
         Instalada pelo {{ catalog.manager === 'nvm-windows' ? 'NVM for Windows' : 'NVM' }}
-        <select
+        <app-runner-select
+          size="compact"
           [value]="installedValue()"
-          (change)="selectInstalled($event)"
-          [attr.aria-label]="label + ' instalada pelo NVM'"
+          (valueChange)="selectInstalled($event)"
+          [ariaLabel]="label + ' instalada pelo NVM'"
         >
           <option value="">Selecionar versão…</option>
           @for (version of catalog.versions; track version) {
             <option [value]="version">Node {{ version }}</option>
           }
-        </select>
+        </app-runner-select>
       </label>
     } @else {
       <span class="node-picker__status">{{ catalog.message }}</span>

@@ -7,7 +7,7 @@ from a single interface, without modifying their source files.
 Despite its name, MFE Runner is not limited to micro frontends or JavaScript.
 It can manage a standalone SPA, a monolith, a backend or frontend application,
 a shared library, or a mixed-language workspace. Node.js support is stable;
-Java/Maven, Java/Gradle, .NET, Python, Rust, and Go are available as Beta
+Java/Maven, Java/Gradle, .NET, Python, Rust, Go, and Flutter are available as Beta
 integrations while their cross-platform coverage continues to grow.
 
 [Website](https://mferunner.com/) ·
@@ -32,6 +32,8 @@ through the download selector.
 - Individual and batch start, stop, restart, and health monitoring.
 - Persistent lightweight supervisor that can keep processes and logs alive
   after the Electron interface closes.
+- Persistent external-service links for local TCP listeners, published Docker
+  ports, and manually configured HTTP/HTTPS upstreams.
 - Consolidated logs with project filters, text or regular-expression search,
   severity filters, bookmarks, pause/follow modes, error navigation, and
   sanitized diagnostic exports.
@@ -71,6 +73,7 @@ Download the recommended installer for your platform from
 | Python | Beta | `pyproject.toml`, requirements, Pipfile, Poetry, uv, common web frameworks |
 | Rust | Beta | Cargo projects/workspaces, rust-toolchain, run/test/build |
 | Go | Beta | `go.mod`, `go.work`, run/test/build with toolchain downloads disabled |
+| Flutter | Beta | `pubspec.yaml`, Flutter/FVM, Web/Android/iOS run/test/build and device selection |
 
 Beta integrations are intentionally conservative: discovery is static, missing
 or incompatible runtimes are reported instead of installed, and ambiguous
@@ -102,10 +105,11 @@ especially welcome.
 
 The private configuration format is version 6. It stores unified
 `projectSources[]`, generic `executionPolicies`, command IDs, health checks,
-and per-project overrides. Previous configurations are backed up and migrated
+and per-project overrides, plus optional `externalServices[]` definitions.
+Previous configurations are backed up and migrated
 automatically, preserving workspaces, stable project IDs, classifications,
 exclusions, visual order, and Node local-library link settings. Supervisor
-protocol v5 gracefully stops processes owned by an obsolete protocol before
+protocol v9 gracefully stops processes owned by an obsolete protocol before
 replacing its detached daemon; project files are unaffected.
 
 Rediscovery is review-first: new, unchanged, and missing projects are shown
@@ -180,6 +184,93 @@ SDKMAN and `.java-version` hints, `JAVA_HOME`, known JDK directories, and
 `PATH`. Maven and Gradle prefer project wrappers, but an explicit global,
 workspace, or project policy can select an installed tool instead. No
 dependency resolution or build task runs during scanning.
+
+### Flutter
+
+Flutter projects are detected from `pubspec.yaml`. The Runner supports Web,
+Android, and iOS run/build commands plus Flutter tests. Runtime resolution
+prefers a project-local FVM SDK (`.fvm/flutter_sdk` or FVM metadata), then
+Flutter configured in the environment or available on `PATH`. The project list
+shows only Run, Test, and Build. Starting one of these actions opens a target
+dialog: Web runs without device selection, while Android and iOS require an
+available device or emulator. Devices are queried explicitly through Flutter's
+machine-readable device listing. If Android has no running device, the dialog
+can list configured AVDs with the Android SDK Emulator and start the selected
+one. The Runner waits for Flutter to detect the new emulator before continuing
+the original action. An emulator started this way remains independent when the
+project or Runner stops. The Runner never installs Flutter, FVM, SDKs,
+emulators, AVDs, or devices.
+
+For Flutter Web runs, the supervisor reserves a free loopback port and passes
+it to Flutter through the structured `--web-hostname` and `--web-port` options.
+The HTTP port is shown in the project table and can be opened, copied, or linked
+to ngrok while the process is active.
+
+### ngrok tunnels
+
+An active managed process with a known HTTP port can be linked to a reserved
+ngrok domain directly from the project table. Configure the official ngrok
+agent first with both credentials required by ngrok: the agent `authtoken` for
+starting endpoints and the API key for account operations. MFE Runner never
+reads or stores either credential; it invokes the installed CLI with its
+validated configuration file.
+
+The settings page detects ngrok, validates its configuration, allows an
+explicit executable path, and links to the official installation and
+credential pages. Domain listing and creation happen only after an explicit
+user action. Creating a custom domain requires a native confirmation because
+it may require a paid plan or incur charges. Wildcard domains are shown but
+cannot be linked in this release.
+
+The credential setup commands can be copied individually with placeholder
+values; the Runner never asks for or copies real credentials. The configuration
+file detected by `ngrok config check` can also be opened in the IDE selected in
+Settings. The renderer sends only the open intent—the main process resolves and
+validates the file again before launching the configured editor.
+
+When creating a managed ngrok domain, the user enters only the short name and
+chooses one of the ngrok suffixes offered by the Runner. The renderer never
+sends an arbitrary full hostname: the main process validates the name and
+reconstructs the hostname from an allowlisted suffix. Domains already owned by
+the account can be selected immediately. The public Reserved Domains API does
+not expose the portal's preventive availability lookup, so final availability
+is confirmed by ngrok during the explicit create operation; an unavailable
+option is marked in the dialog without exposing raw CLI diagnostics.
+
+The tunnel is a supervised sidecar. It stops with the project and is restored
+after the direct **Restart** action. A manual stop followed by a later start
+does not restore it, preventing accidental public exposure. See the official
+[ngrok CLI](https://ngrok.com/docs/agent/cli),
+[agent configuration](https://ngrok.com/docs/agent/config/v3), and
+[free-plan limits](https://ngrok.com/docs/pricing-limits/free-plan-limits).
+
+### External services
+
+Use **Link external service** above the process table to monitor an HTTP or
+HTTPS service started outside MFE Runner. The dialog can explicitly discover
+local TCP listeners and running Docker containers with published ports, or
+accept a manual host and port. Ports already owned by a discovered project,
+managed process, or linked external service are excluded from the import
+catalog.
+
+Docker logs are followed with the installed Docker CLI. A generic process can
+optionally follow an application log file, including append, truncation, and
+rotation. Output already captured by IntelliJ or another terminal cannot be
+recovered retroactively; configure that application to write to a file when
+logs are required. Remote services can be monitored but cannot be terminated.
+
+External definitions reconnect after the Runner reopens. If an upstream goes
+offline its log collector and ngrok tunnel stop. Monitoring resumes only when
+the same local process or container identity returns; ngrok is not reopened
+automatically. If another process reuses the port, the row reports an identity
+mismatch and requires confirmation before rebinding.
+
+Unlinking removes only Runner state. Stopping an external process or container
+is a separate, confirmed action, and global start/stop/restart or exit policies
+never terminate external targets. Docker discovery/logging/stopping uses the
+official CLI with fixed argument arrays and `shell: false`; MFE Runner does not
+install Docker or change container configuration. See
+[Docker logs](https://docs.docker.com/reference/cli/docker/container/logs/).
 
 ## Safety principles
 

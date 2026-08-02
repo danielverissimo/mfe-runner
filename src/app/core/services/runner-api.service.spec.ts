@@ -33,6 +33,66 @@ describe('RunnerApiService', () => {
     });
   });
 
+  it('loads ngrok status explicitly and forwards identifier-only tunnel requests', async () => {
+    const service = TestBed.inject(RunnerApiService);
+    await service.initialize();
+    expect(service.ngrokStatus().version).toBe('3.22.1');
+    const domains = await service.refreshNgrokDomains();
+    expect(domains.map((domain) => domain.domain)).toEqual(['app.example.com']);
+
+    await service.startNgrokTunnel({
+      workspaceId: 'workspace-1',
+      projectId: 'root-1/example',
+      domainId: 'rd_123',
+      domain: 'app.example.com',
+    });
+    expect(window.runnerApi?.startNgrokTunnel).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1',
+      projectId: 'root-1/example',
+      domainId: 'rd_123',
+      domain: 'app.example.com',
+    });
+  });
+
+  it('creates ngrok domains from a short name and removes Electron error prefixes', async () => {
+    const service = TestBed.inject(RunnerApiService);
+    const bridge = window.runnerApi!;
+    const createDomain = bridge.createNgrokDomain as jasmine.Spy;
+    createDomain.and.resolveTo({
+      canceled: false,
+      domain: {
+        id: 'rd_new',
+        domain: 'minha-app.ngrok-free.dev',
+        description: 'Runner',
+        createdAt: null,
+        cnameTarget: null,
+        certificateStatus: null,
+        dnsStatus: null,
+        wildcard: false,
+        compatible: true,
+      },
+    });
+
+    await service.createNgrokDomain(
+      'minha-app',
+      'ngrok-free.dev',
+      'Runner',
+    );
+    expect(bridge.createNgrokDomain).toHaveBeenCalledOnceWith({
+      name: 'minha-app',
+      suffix: 'ngrok-free.dev',
+      description: 'Runner',
+    });
+
+    createDomain.and.rejectWith(new Error(
+      "Error invoking remote method 'runner:create-ngrok-domain': Error: Este domínio não está disponível. Escolha outra opção.",
+    ));
+    await service.createNgrokDomain('ocupado', 'ngrok.app');
+    expect(service.ngrokDomainsMessage()).toBe(
+      'Este domínio não está disponível. Escolha outra opção.',
+    );
+  });
+
   it('requests external process termination through the constrained bridge', async () => {
     const service = TestBed.inject(RunnerApiService);
     await service.terminateExternalProcess(
@@ -44,6 +104,49 @@ describe('RunnerApiService', () => {
         workspaceId: 'workspace-1',
         projectId: 'root-1/example',
       });
+  });
+
+  it('discovers and manages persistent external services through typed bridge calls', async () => {
+    const service = TestBed.inject(RunnerApiService);
+    const bridge = window.runnerApi!;
+    (bridge.discoverExternalServices as jasmine.Spy).and.resolveTo({
+      candidates: [{
+        id: 'process:123:9090',
+        provider: 'process',
+        name: 'java',
+        host: 'localhost',
+        port: 9090,
+        pid: 123,
+        canTerminate: true,
+        ports: [{ host: 'localhost', port: 9090 }],
+      }],
+      docker: { available: false, message: 'Docker indisponível.' },
+      processMessage: null,
+    });
+
+    await service.discoverExternalServices('workspace-1');
+    expect(service.externalServicesCatalog().candidates[0].port).toBe(9090);
+    await service.addExternalService({
+      workspaceId: 'workspace-1',
+      candidateId: 'process:123:9090',
+      name: 'API',
+      scheme: 'http',
+      host: 'localhost',
+      port: 9090,
+    });
+    await service.removeExternalService('workspace-1', 'external-service:abc');
+    expect(bridge.addExternalService).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      candidateId: 'process:123:9090',
+      name: 'API',
+      scheme: 'http',
+      host: 'localhost',
+      port: 9090,
+    });
+    expect(bridge.removeExternalService).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      serviceId: 'external-service:abc',
+    });
   });
 
   it('delegates workspace lifecycle and project exclusion', async () => {
@@ -128,6 +231,12 @@ describe('RunnerApiService', () => {
     expect(window.runnerApi?.copyText).toHaveBeenCalledOnceWith({
       text: 'log selecionado',
     });
+  });
+
+  it('opens the authoritative ngrok config without sending a renderer path', async () => {
+    const service = TestBed.inject(RunnerApiService);
+    await service.openNgrokConfig();
+    expect(window.runnerApi?.openNgrokConfig).toHaveBeenCalledOnceWith();
   });
 
   it('delegates developer tools using only workspace and project identifiers', async () => {

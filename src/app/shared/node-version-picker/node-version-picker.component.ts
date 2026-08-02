@@ -7,11 +7,12 @@ import {
 } from '@angular/core';
 import { NodeVersionCatalog } from '../../core/models/runner.models';
 import { ActionTooltipDirective } from '../action-tooltip/action-tooltip.directive';
+import { RunnerSelectComponent } from '../runner-select/runner-select.component';
 
 @Component({
   selector: 'app-node-version-picker',
   standalone: true,
-  imports: [ActionTooltipDirective],
+  imports: [ActionTooltipDirective, RunnerSelectComponent],
   templateUrl: './node-version-picker.component.html',
   styleUrl: './node-version-picker.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -30,8 +31,7 @@ export class NodeVersionPickerComponent {
     return this.catalog.versions.includes(normalized) ? normalized : '';
   }
 
-  selectInstalled(event: Event): void {
-    const version = (event.target as HTMLSelectElement).value;
+  selectInstalled(version: string): void {
     if (version) this.valueChange.emit(version);
   }
 

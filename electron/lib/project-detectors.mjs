@@ -83,7 +83,9 @@ export class PackageJsonProjectDetector {
   markerNames = new Set(['package.json']);
 
   async detect(projectPath, sourceRoot) {
-    const packageJson = await readJson(path.join(projectPath, 'package.json'));
+    const packageJsonPath = path.join(projectPath, 'package.json');
+    if (!(await fileExists(packageJsonPath))) return null;
+    const packageJson = await readJson(packageJsonPath);
     if (
       packageJson.name === 'mfe-runner' &&
       packageJson.main === 'electron/main.mjs'
@@ -242,6 +244,28 @@ export const PROJECT_DETECTORS = [
   ...NON_NODE_PROJECT_DETECTORS,
 ];
 
+function isPathInside(candidatePath, parentPath) {
+  const relative = path.relative(parentPath, candidatePath);
+  return relative !== '' &&
+    !relative.startsWith(`..${path.sep}`) &&
+    relative !== '..' &&
+    !path.isAbsolute(relative);
+}
+
+function removeFlutterAndroidModules(projects) {
+  const flutterAndroidRoots = projects
+    .filter((project) => project.ecosystem === 'flutter')
+    .map((project) => path.join(project.absolutePath, 'android'));
+  if (!flutterAndroidRoots.length) return projects;
+  return projects.filter((project) =>
+    project.ecosystem !== 'java-gradle' ||
+    !flutterAndroidRoots.some((androidRoot) =>
+      project.absolutePath === androidRoot ||
+      isPathInside(project.absolutePath, androidRoot)
+    )
+  );
+}
+
 export async function inspectProjectSource(rootPath, onProgress = () => undefined) {
   const canonicalRoot = await realpath(rootPath);
   const directories = [];
@@ -380,6 +404,7 @@ export async function inspectProjectSource(rootPath, onProgress = () => undefine
       ),
     });
   }
+  projects = removeFlutterAndroidModules(projects);
   const rootCandidate = projects.find(
     (project) => project.relativePath === '.',
   );

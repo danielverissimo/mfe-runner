@@ -63,6 +63,30 @@ test('persists v6 sources, stable IDs, policies, overrides and exclusions', asyn
   assert.deepEqual(persisted.workspaces[0].projectOrder, []);
 });
 
+test('persists external services in schema v6 and removes only their definitions', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-config-'));
+  const configPath = path.join(directory, 'runner-config.json');
+  const store = new ConfigStore(configPath);
+  await store.load();
+  const workspace = await store.addWorkspace(input);
+  const service = await store.addExternalService(workspace.id, {
+    name: 'API externa',
+    scheme: 'http',
+    host: 'localhost',
+    port: 9090,
+    provider: 'process',
+    identity: { pid: 4321, name: 'java' },
+    logSource: { type: 'none' },
+  });
+  assert.match(service.id, /^external-service:/);
+  const persisted = JSON.parse(await readFile(configPath, 'utf8'));
+  assert.equal(persisted.version, 6);
+  assert.equal(persisted.workspaces[0].externalServices[0].port, 9090);
+
+  await store.removeExternalService(workspace.id, service.id);
+  assert.deepEqual(store.snapshot.workspaces[0].externalServices, []);
+});
+
 test('migrates v4 shell, roots and linked libraries into v6 sources', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-config-'));
   const configPath = path.join(directory, 'runner-config.json');
@@ -111,6 +135,26 @@ test('uses keep-running for new installs and preserves the v4 fallback', async (
   await old.load();
   assert.equal(old.snapshot.settings.stopProcessesOnExit, true);
   assert.equal(old.snapshot.settings.theme, 'system');
+  assert.deepEqual(old.snapshot.settings.ngrok, { executablePath: null });
+});
+
+test('persists only the optional ngrok executable path in v6 settings', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-runner-config-'));
+  const configPath = path.join(directory, 'runner-config.json');
+  const store = new ConfigStore(configPath);
+  await store.load();
+  await store.updateSettings({
+    ngrok: {
+      executablePath: '/opt/homebrew/bin/ngrok',
+      authtoken: 'must-not-be-persisted',
+      apiKey: 'must-not-be-persisted',
+    },
+  });
+  assert.deepEqual(store.snapshot.settings.ngrok, {
+    executablePath: '/opt/homebrew/bin/ngrok',
+  });
+  const persisted = await readFile(configPath, 'utf8');
+  assert.doesNotMatch(persisted, /must-not-be-persisted/);
 });
 
 test('persists a valid appearance theme and sanitizes unsupported values', async () => {

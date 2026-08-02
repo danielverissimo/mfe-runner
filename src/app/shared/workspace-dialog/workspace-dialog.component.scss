@@ -166,7 +166,7 @@ p, small { margin: 0; color: var(--runner-text-muted); font-size: 12px; }
 form, label { display: grid; gap: 8px; }
 form { gap: 17px; }
 label, .roots-heading strong { color: var(--runner-text-secondary); font-size: 12px; font-weight: 650; }
-input, select {
+input {
   width: 100%;
   min-width: 0;
   height: 40px;

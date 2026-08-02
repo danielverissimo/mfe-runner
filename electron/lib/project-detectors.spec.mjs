@@ -274,3 +274,82 @@ test('detects .NET, Python, Rust and Go projects as beta ecosystems', async () =
   assert.equal(projects.get('rust').defaultCommandId, 'rust:run');
   assert.equal(projects.get('go').defaultCommandId, 'go:run');
 });
+
+test('detects Flutter projects and structured web, Android, iOS, test and build commands', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-detector-flutter-'));
+  await writeFile(path.join(root, 'pubspec.yaml'), `name: mobile_shell
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+`);
+
+  const inspection = publicSourceInspection(await inspectProjectSource(root));
+  const project = inspection.projects[0];
+  assert.equal(project.ecosystem, 'flutter');
+  assert.equal(project.supportLevel, 'beta');
+  assert.equal(project.runtimeRequirements.flutter, '>=3.3.0 <4.0.0');
+  assert.equal(project.defaultCommandId, 'flutter:run:web');
+  assert.deepEqual(
+    project.commands.map((item) => item.id),
+    [
+      'flutter:run:web',
+      'flutter:run:android',
+      'flutter:run:ios',
+      'flutter:test',
+      'flutter:build:web',
+      'flutter:build:android',
+      'flutter:build:ios',
+    ],
+  );
+});
+
+test('does not warn about missing package.json or expose Flutter Android modules', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-detector-flutter-mixed-'));
+  const api = path.join(root, 'server-api');
+  const flutter = path.join(root, 'mobile-app');
+  const android = path.join(flutter, 'android');
+  const androidApp = path.join(android, 'app');
+  await Promise.all([api, androidApp].map((directory) =>
+    mkdir(directory, { recursive: true })
+  ));
+  await writeFile(path.join(api, 'pom.xml'), `<?xml version="1.0"?>
+    <project>
+      <modelVersion>4.0.0</modelVersion>
+      <artifactId>server-api</artifactId>
+      <version>1.0.0</version>
+    </project>`);
+  await writeFile(path.join(flutter, 'pubspec.yaml'), `name: mobile_app
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+`);
+  await writeFile(
+    path.join(android, 'settings.gradle'),
+    `rootProject.name = 'mobile_app_android'\ninclude ':app'\n`,
+  );
+  await writeFile(
+    path.join(androidApp, 'build.gradle'),
+    `plugins { id 'com.android.application' }\n`,
+  );
+
+  const inspection = publicSourceInspection(await inspectProjectSource(root));
+
+  assert.deepEqual(inspection.warnings, []);
+  assert.deepEqual(
+    inspection.projects.map((project) => [
+      project.relativePath,
+      project.ecosystem,
+    ]).sort((left, right) => left[0].localeCompare(right[0])),
+    [
+      ['mobile-app', 'flutter'],
+      ['server-api', 'java-maven'],
+    ],
+  );
+});

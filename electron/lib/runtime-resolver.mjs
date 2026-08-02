@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { access, readFile, readdir, realpath } from 'node:fs/promises';
+import { access, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -8,6 +8,7 @@ import { SUPPORT_LEVELS } from './ecosystem-adapters.mjs';
 
 const execFileAsync = promisify(execFile);
 const VERSION_TIMEOUT_MS = 2500;
+const FLUTTER_DEVICES_TIMEOUT_MS = 30000;
 
 async function isExecutable(filePath) {
   if (!filePath) return false;
@@ -411,9 +412,200 @@ const INSTALLATION_DESCRIPTORS = Object.freeze({
     label: 'Go toolchain',
     versionArgs: ['version'],
   },
+  'flutter:runtime': {
+    names: ['flutter'],
+    managed: [],
+    label: 'Flutter SDK',
+    versionArgs: ['--version'],
+  },
 });
 
+async function flutterSdkExecutable(root) {
+  if (!root) return null;
+  const candidate = path.join(
+    root,
+    'bin',
+    process.platform === 'win32' ? 'flutter.bat' : 'flutter',
+  );
+  return await isExecutable(candidate) ? realpath(candidate) : null;
+}
+
+async function flutterProjectExecutable(projectRoot) {
+  for (const candidate of [
+    path.join(projectRoot, '.fvm', 'flutter_sdk'),
+    process.env.FLUTTER_ROOT,
+    path.join(os.homedir(), 'fvm', 'default'),
+    path.join(os.homedir(), '.fvm', 'default'),
+  ]) {
+    const executable = await flutterSdkExecutable(candidate);
+    if (executable) {
+      return {
+        executable,
+        source: candidate.includes(`${path.sep}.fvm${path.sep}`)
+          ? 'fvm'
+          : 'flutter-root',
+      };
+    }
+  }
+  let version = null;
+  for (const filePath of [
+    path.join(projectRoot, '.fvmrc'),
+    path.join(projectRoot, '.fvm', 'fvm_config.json'),
+  ]) {
+    try {
+      const parsed = JSON.parse(await readFile(filePath, 'utf8'));
+      version = typeof parsed === 'string'
+        ? parsed
+        : parsed?.flutter ?? parsed?.flutterSdkVersion ?? parsed?.version;
+      if (version) break;
+    } catch {
+      // Optional FVM metadata.
+    }
+  }
+  if (version) {
+    for (const root of [
+      path.join(os.homedir(), 'fvm', 'versions'),
+      path.join(os.homedir(), '.fvm', 'versions'),
+    ]) {
+      const cached = await flutterSdkExecutable(path.join(root, String(version)));
+      if (cached) return { executable: cached, source: 'fvm' };
+    }
+  }
+  return null;
+}
+
+function normalizeFlutterDevices(value) {
+  return (Array.isArray(value) ? value : []).map((device) => {
+    const targetPlatform = String(device.targetPlatform ?? '').toLowerCase();
+    const platform = targetPlatform.includes('android')
+      ? 'android'
+      : targetPlatform.includes('ios')
+        ? 'ios'
+        : targetPlatform.includes('web') || targetPlatform.includes('chrome') || targetPlatform.includes('edge')
+          ? 'web'
+          : 'unknown';
+    return {
+      id: String(device.id ?? ''),
+      name: String(device.name ?? device.id ?? 'Flutter device'),
+      platform,
+      available: device.isSupported !== false,
+      emulator: Boolean(device.emulator ?? device.isEmulator),
+      ...(device.category ? { category: String(device.category) } : {}),
+    };
+  }).filter((device) => device.id);
+}
+
+export async function listFlutterDevices({ executable, cwd }) {
+  if (!executable) {
+    return { devices: [], message: 'Flutter SDK não encontrado.' };
+  }
+  try {
+    const result = await execFileAsync(executable, ['devices', '--machine'], {
+      cwd,
+      timeout: FLUTTER_DEVICES_TIMEOUT_MS,
+      windowsHide: true,
+      maxBuffer: 512 * 1024,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+    const parsed = JSON.parse(result.stdout ?? '[]');
+    const devices = normalizeFlutterDevices(parsed);
+    return { devices };
+  } catch (error) {
+    return {
+      devices: [],
+      message: error?.stderr?.trim() || 'Não foi possível consultar os devices Flutter.',
+    };
+  }
+}
+
+async function resolveFlutter(project, policies) {
+  const policy = policyFor(policies, 'flutter', 'runtime');
+  let executable = null;
+  let source = 'path';
+  if (policy?.mode === 'explicit' && policy.path) {
+    let details = null;
+    try { details = await stat(policy.path); } catch { /* stale selection */ }
+    executable = details?.isDirectory()
+      ? await flutterSdkExecutable(policy.path)
+      : await isExecutable(policy.path) ? await realpath(policy.path) : null;
+    source = 'explicit';
+  } else {
+    const projectInstallation = await flutterProjectExecutable(project.absolutePath);
+    executable = projectInstallation?.executable ?? await findExecutable(['flutter']);
+    source = projectInstallation?.source ?? 'path';
+  }
+  const rawVersion = await commandVersion(executable, ['--version']);
+  const version = firstVersion(rawVersion);
+  const compatibility = executable
+    ? compatibilityFor(version, project.runtimeRequirements?.flutter)
+    : { status: 'unavailable', reason: 'Flutter SDK não encontrado.' };
+  const available = !!executable;
+  return {
+    ecosystem: 'flutter',
+    supportLevel: SUPPORT_LEVELS.flutter,
+    available,
+    compatibility: available ? compatibility.status : 'unavailable',
+    reason: available
+      ? compatibility.reason ?? null
+      : policy?.mode === 'explicit'
+        ? `Flutter configurado não encontrado: ${policy.path}.`
+        : 'Flutter SDK não encontrado. Configure Flutter ou FVM.',
+    requirements: project.runtimeRequirements ?? {},
+    components: {
+      runtime: { available, path: executable, version, rawVersion, source },
+    },
+    environment: {
+      PATH: [executable ? path.dirname(executable) : null, process.env.PATH]
+        .filter(Boolean).join(path.delimiter),
+    },
+  };
+}
+
 export async function listRuntimeInstallations({ ecosystem, component }) {
+  if (ecosystem === 'flutter' && component === 'runtime') {
+    const extraPaths = [
+      process.env.FLUTTER_ROOT
+        ? path.join(
+            process.env.FLUTTER_ROOT,
+            'bin',
+            process.platform === 'win32' ? 'flutter.bat' : 'flutter',
+          )
+        : null,
+      path.join(os.homedir(), 'fvm', 'default', 'bin',
+        process.platform === 'win32' ? 'flutter.bat' : 'flutter'),
+      path.join(os.homedir(), '.fvm', 'default', 'bin',
+        process.platform === 'win32' ? 'flutter.bat' : 'flutter'),
+      path.join(os.homedir(), 'flutter', 'bin',
+        process.platform === 'win32' ? 'flutter.bat' : 'flutter'),
+      path.join(os.homedir(), 'development', 'flutter', 'bin',
+        process.platform === 'win32' ? 'flutter.bat' : 'flutter'),
+    ];
+    for (const root of [
+      path.join(os.homedir(), 'fvm', 'versions'),
+      path.join(os.homedir(), '.fvm', 'versions'),
+    ]) {
+      for (const directory of await childDirectories(root)) {
+        extraPaths.push(path.join(directory, 'bin',
+          process.platform === 'win32' ? 'flutter.bat' : 'flutter'));
+      }
+    }
+    const installations = [];
+    for (const executable of await executableCandidates(['flutter'], extraPaths)) {
+      installations.push(await installationFromExecutable({
+        ecosystem,
+        component,
+        executable,
+        label: 'Flutter SDK',
+        source: executable.includes(`${path.sep}fvm${path.sep}`) ? 'fvm' : 'installed',
+        versionArgs: ['--version'],
+      }));
+    }
+    return {
+      ecosystem,
+      component,
+      installations: deduplicateInstallations(installations),
+    };
+  }
   if (
     (ecosystem === 'java-maven' || ecosystem === 'java-gradle') &&
     component === 'runtime'
@@ -754,6 +946,9 @@ export async function resolveEcosystemRuntime({
   if (project.ecosystem.startsWith('java-')) {
     return resolveJava(project, policies);
   }
+  if (project.ecosystem === 'flutter') {
+    return resolveFlutter(project, policies);
+  }
   const descriptors = {
     dotnet: { names: ['dotnet'], versionArgs: ['--version'], label: '.NET SDK' },
     python: {
@@ -774,6 +969,7 @@ export const __test__ = {
   compatibilityFor,
   firstVersion,
   normalizeJavaVersion,
+  normalizeFlutterDevices,
   pathCandidates,
   policyFor,
 };

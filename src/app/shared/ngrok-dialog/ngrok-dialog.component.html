@@ -1,0 +1,163 @@
+@if (open) {
+  <div class="backdrop" (click)="!busy() && dismiss.emit()" aria-hidden="true"></div>
+  <section
+    #dialog
+    class="dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="ngrok-dialog-title"
+    aria-describedby="ngrok-dialog-description"
+  >
+    <header>
+      <div class="dialog__icon" aria-hidden="true">↗</div>
+      <div>
+        <span>ngrok · HTTP</span>
+        <h2 id="ngrok-dialog-title">Vincular domínio público</h2>
+        <p id="ngrok-dialog-description">{{ targetName || project?.displayName }}</p>
+      </div>
+      <button
+        class="close-button"
+        type="button"
+        aria-label="Fechar configuração do ngrok"
+        [disabled]="busy()"
+        (click)="dismiss.emit()"
+      >×</button>
+    </header>
+
+    @if (!status.installed || !status.configValid) {
+      <div class="state state--warning" role="alert">
+        <strong>ngrok indisponível</strong>
+        <span>{{ status.message }}</span>
+        <button type="button" (click)="openSettings.emit()">Abrir configurações do ngrok</button>
+      </div>
+    } @else {
+      <form (ngSubmit)="submit()">
+        <section class="catalog" aria-live="polite">
+          <div class="section-heading">
+            <div>
+              <strong>Domínio reservado</strong>
+              <small>Escolha um domínio exato da sua conta ngrok.</small>
+            </div>
+            <button class="button button--ghost" type="button" [disabled]="busy()" (click)="refresh.emit()">
+              {{ loading ? 'Atualizando…' : 'Atualizar' }}
+            </button>
+          </div>
+
+          @if (loading) {
+            <div class="state" role="status">Consultando domínios do ngrok…</div>
+          } @else {
+            @if (message) {
+              <div class="state state--warning" role="alert">{{ message }}</div>
+            }
+            @if (!domains.length) {
+              <div class="state">Nenhum domínio reservado foi encontrado nesta conta.</div>
+            }
+            <label class="domain-picker">
+              Domínio
+              <app-runner-select name="ngrokDomain" [(ngModel)]="selectedDomainId" [disabled]="busy()" autofocus>
+                <option value="">Selecione um domínio</option>
+                @for (domain of domains; track domain.id) {
+                  <option [value]="domain.id" [disabled]="!domain.compatible">
+                    {{ domain.domain }}{{ domain.wildcard ? ' · wildcard incompatível' : '' }}
+                  </option>
+                }
+              </app-runner-select>
+            </label>
+            @if (selectedDomain(); as domain) {
+              <div class="domain-details">
+                <strong>https://{{ domain.domain }}</strong>
+                @if (domain.description) { <span>{{ domain.description }}</span> }
+                @if (domain.cnameTarget) {
+                  <span>Configure o CNAME para <code>{{ domain.cnameTarget }}</code>.</span>
+                }
+                <small>Certificado: {{ domain.certificateStatus || 'não informado' }} · DNS: {{ domain.dnsStatus || 'não informado' }}</small>
+              </div>
+            }
+          }
+        </section>
+
+        <section class="create-section">
+          <button
+            class="create-toggle"
+            type="button"
+            [attr.aria-expanded]="createExpanded"
+            (click)="createExpanded = !createExpanded"
+          >{{ createExpanded ? 'Ocultar criação de domínio' : 'Criar novo domínio reservado' }}</button>
+          @if (createExpanded) {
+            <div class="billing-warning" role="note">
+              Domínios personalizados podem exigir plano pago ou gerar cobrança na conta ngrok.
+            </div>
+            <div class="create-fields">
+              <label>
+                Nome do domínio
+                <input
+                  name="ngrokDomainDraft"
+                  [ngModel]="domainDraft"
+                  maxlength="63"
+                  autocomplete="off"
+                  placeholder="minha-aplicacao"
+                  [disabled]="busy()"
+                  (ngModelChange)="updateDomainName($event)"
+                >
+              </label>
+              <label>
+                Descrição opcional
+                <input name="ngrokDescriptionDraft" [(ngModel)]="descriptionDraft" maxlength="200" [disabled]="busy()">
+              </label>
+            </div>
+            @if (domainDraft && !validDomainName()) {
+              <small class="field-error" role="alert">
+                Use somente letras minúsculas, números ou hífen, sem informar o sufixo.
+              </small>
+            }
+            @if (validDomainName()) {
+              <fieldset class="domain-options">
+                <legend>Escolha uma opção de domínio</legend>
+                @for (suffix of domainSuffixes; track suffix) {
+                  <label
+                    class="domain-option"
+                    [class.domain-option--owned]="ownedDomain(suffix)"
+                    [class.domain-option--unavailable]="unavailableSuffixes.has(suffix)"
+                  >
+                    <input
+                      type="radio"
+                      name="ngrokDomainSuffix"
+                      [value]="suffix"
+                      [(ngModel)]="selectedSuffix"
+                      [disabled]="busy() || unavailableSuffixes.has(suffix)"
+                    >
+                    <span>{{ candidateDomain(suffix) }}</span>
+                    <small>
+                      @if (ownedDomain(suffix)) {
+                        Já está na sua conta
+                      } @else if (unavailableSuffixes.has(suffix)) {
+                        Indisponível
+                      } @else {
+                        Selecionar
+                      }
+                    </small>
+                  </label>
+                }
+              </fieldset>
+              <small class="availability-note">
+                A API pública do ngrok confirma a disponibilidade final durante a criação.
+              </small>
+            }
+            <div class="create-actions">
+              <button class="button button--ghost" type="button" [disabled]="!canCreate()" (click)="submitCreate()">
+                {{ creating ? 'Criando…' : (selectedSuffix && ownedDomain(selectedSuffix) ? 'Usar domínio' : 'Criar domínio') }}
+              </button>
+            </div>
+          }
+        </section>
+
+        <footer>
+          <button class="button button--ghost" type="button" [disabled]="busy()" (click)="dismiss.emit()">Cancelar</button>
+          <button class="button button--primary" type="submit" [disabled]="!selectedDomain() || busy()">
+            {{ starting ? 'Vinculando…' : 'Vincular ngrok' }}
+          </button>
+        </footer>
+      </form>
+    }
+  </section>
+}

@@ -45,6 +45,46 @@ describe('ProcessTableComponent', () => {
     expect(text).toContain('v24.15.0');
   });
 
+  it('shows and opens a dynamic port reported by the supervisor', () => {
+    const project = { ...projectFixture, port: null };
+    const process = {
+      key: 'workspace-1::root-1/example',
+      workspaceId: 'workspace-1',
+      projectId: project.id,
+      projectName: project.name,
+      script: 'run',
+      commandId: 'flutter:run:web',
+      status: 'healthy' as const,
+      pid: 123,
+      port: 49321,
+      startedAt: '2026-08-01T00:00:00.000Z',
+      stoppedAt: null,
+      exitCode: null,
+      message: 'Saudável na porta 49321.',
+      logs: [],
+      ngrok: null,
+    };
+    fixture.componentRef.setInput('projects', [project]);
+    fixture.componentRef.setInput('processes', [process]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('49321');
+    spyOn(fixture.componentInstance.openAddress, 'emit');
+    const open: HTMLButtonElement = fixture.nativeElement.querySelector(
+      '.icon-button--open',
+    );
+    open.click();
+    expect(fixture.componentInstance.openAddress.emit)
+      .toHaveBeenCalledOnceWith(49321);
+
+    fixture.componentRef.setInput('processes', [{
+      ...process,
+      status: 'stopped' as const,
+    }]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('49321');
+  });
+
   it('provides a tooltip for every visible project action', () => {
     const buttons: HTMLButtonElement[] = [
       ...fixture.nativeElement.querySelectorAll('.actions button'),
@@ -136,6 +176,159 @@ describe('ProcessTableComponent', () => {
     });
   });
 
+  it('offers ngrok only for an active managed process with a known port', () => {
+    const process = {
+      key: 'workspace-1::root-1/example',
+      workspaceId: 'workspace-1',
+      projectId: projectFixture.id,
+      projectName: projectFixture.name,
+      script: 'start',
+      status: 'healthy' as const,
+      pid: 123,
+      port: 4310,
+      startedAt: '2026-08-01T00:00:00.000Z',
+      stoppedAt: null,
+      exitCode: null,
+      message: 'Saudável.',
+      logs: [],
+      ngrok: null,
+    };
+    fixture.componentRef.setInput('processes', [process]);
+    fixture.detectChanges();
+    const link: HTMLButtonElement = [...fixture.nativeElement.querySelectorAll('button')]
+      .find((button: HTMLButtonElement) => button.title === 'Vincular ngrok');
+    expect(link).toBeTruthy();
+    spyOn(fixture.componentInstance.linkNgrok, 'emit');
+    link.click();
+    expect(fixture.componentInstance.linkNgrok.emit)
+      .toHaveBeenCalledOnceWith(projectFixture.id);
+
+    fixture.componentRef.setInput('processes', [{
+      ...process,
+      status: 'stopped' as const,
+    }]);
+    fixture.detectChanges();
+    expect([...fixture.nativeElement.querySelectorAll('button')]
+      .some((button: HTMLButtonElement) => button.title === 'Vincular ngrok'))
+      .toBeFalse();
+  });
+
+  it('renders an external Docker service with only external-service actions', () => {
+    const service = {
+      id: 'external-service:docker',
+      name: 'Docker API',
+      scheme: 'http' as const,
+      host: 'localhost',
+      port: 8080,
+      provider: 'docker' as const,
+      identity: {
+        containerId: 'container-1',
+        name: 'api',
+        image: 'api:latest',
+      },
+      logSource: { type: 'docker' as const },
+    };
+    fixture.componentRef.setInput('externalServices', [service]);
+    fixture.componentRef.setInput('processes', [{
+      key: 'workspace-1::external-service:docker',
+      workspaceId: 'workspace-1',
+      projectId: service.id,
+      projectName: service.name,
+      source: 'external' as const,
+      script: 'external',
+      status: 'online' as const,
+      pid: null,
+      port: 8080,
+      startedAt: '2026-08-01T00:00:00.000Z',
+      stoppedAt: null,
+      exitCode: null,
+      message: 'Online.',
+      logs: [],
+      external: {
+        scheme: 'http' as const,
+        host: 'localhost',
+        provider: 'docker' as const,
+        identity: service.identity,
+        logSource: service.logSource,
+        canTerminate: true,
+      },
+      ngrok: null,
+    }]);
+    fixture.detectChanges();
+
+    const row: HTMLTableRowElement = fixture.nativeElement.querySelector(
+      '.external-row',
+    );
+    const groups: HTMLElement[] = [
+      ...fixture.nativeElement.querySelectorAll('.table-group-row'),
+    ];
+    expect(groups.map((group) =>
+      group.querySelector('span')?.textContent?.trim()
+    )).toEqual(['Projetos', 'Serviços externos']);
+    expect(groups.map((group) =>
+      group.querySelector('small')?.textContent?.trim()
+    )).toEqual(['1', '1']);
+    expect(row.textContent).toContain('Docker API');
+    expect(row.textContent).toContain('Externo');
+    expect(row.textContent).toContain('Online');
+    expect(row.querySelector('.script-select')).toBeNull();
+    expect([...row.querySelectorAll('button')].some((button) =>
+      button.title === 'Vincular ngrok'
+    )).toBeTrue();
+    expect([...row.querySelectorAll('button')].some((button) =>
+      button.title === 'Desvincular sem encerrar'
+    )).toBeTrue();
+  });
+
+  it('shows open, copy and stop actions for an online ngrok tunnel', () => {
+    fixture.componentRef.setInput('processes', [{
+      key: 'workspace-1::root-1/example',
+      workspaceId: 'workspace-1',
+      projectId: projectFixture.id,
+      projectName: projectFixture.name,
+      script: 'start',
+      status: 'healthy',
+      pid: 123,
+      port: 4310,
+      startedAt: '2026-08-01T00:00:00.000Z',
+      stoppedAt: null,
+      exitCode: null,
+      message: 'Saudável.',
+      logs: [],
+      ngrok: {
+        status: 'online',
+        domainId: 'rd_123',
+        domain: 'app.example.com',
+        publicUrl: 'https://app.example.com',
+        pid: 456,
+        exitCode: null,
+        startedAt: '2026-08-01T00:00:01.000Z',
+        stoppedAt: null,
+        message: 'Online.',
+      },
+    }]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('https://app.example.com');
+    expect([...fixture.nativeElement.querySelectorAll('button')]
+      .some((button: HTMLButtonElement) => button.title === 'Copiar endereço público'))
+      .toBeTrue();
+    expect([...fixture.nativeElement.querySelectorAll('button')]
+      .some((button: HTMLButtonElement) => button.title === 'Encerrar ngrok'))
+      .toBeTrue();
+    const copyButton: HTMLButtonElement = [...fixture.nativeElement
+      .querySelectorAll('button')]
+      .find((button: HTMLButtonElement) =>
+        button.title === 'Copiar endereço público');
+    const stopButton: HTMLButtonElement = [...fixture.nativeElement
+      .querySelectorAll('button')]
+      .find((button: HTMLButtonElement) => button.title === 'Encerrar ngrok');
+    expect(copyButton.querySelector('svg')?.dataset['icon']).toBe('copy');
+    expect(stopButton.querySelector('svg')?.dataset['icon']).toBe('stop');
+    const uptimeCell: HTMLTableCellElement = fixture.nativeElement
+      .querySelector('.uptime-cell');
+    expect(getComputedStyle(uptimeCell).whiteSpace).toBe('nowrap');
+  });
+
   it('uses the default command resolved by discovery and project overrides', () => {
     const project = {
       ...projectFixture,
@@ -167,10 +360,51 @@ describe('ProcessTableComponent', () => {
     fixture.detectChanges();
 
     const select: HTMLSelectElement =
-      fixture.nativeElement.querySelector('.script-select');
+      fixture.nativeElement.querySelector('.script-select select');
 
     expect(select.value).toBe('node:script:ng');
     expect(fixture.componentInstance.selectedScript(project)).toBe('ng');
+  });
+
+  it('groups Flutter commands into Run, Test and Build choices', () => {
+    const flutterProject = {
+      ...projectFixture,
+      ecosystem: 'flutter' as const,
+      technology: 'Flutter',
+      supportLevel: 'beta' as const,
+      commands: [
+        { id: 'flutter:run:web', label: 'Flutter · Run Web', category: 'run' as const, longRunning: true, task: 'run', args: [], flutterTarget: 'web' as const },
+        { id: 'flutter:run:android', label: 'Flutter · Run Android', category: 'run' as const, longRunning: true, task: 'run', args: [], flutterTarget: 'android' as const },
+        { id: 'flutter:run:ios', label: 'Flutter · Run iOS', category: 'run' as const, longRunning: true, task: 'run', args: [], flutterTarget: 'ios' as const },
+        { id: 'flutter:test', label: 'Flutter · Test', category: 'test' as const, longRunning: false, task: 'test', args: [], flutterTarget: 'test' as const },
+        { id: 'flutter:build:web', label: 'Flutter · Build Web', category: 'build' as const, longRunning: false, task: 'build', args: [], flutterTarget: 'build-web' as const },
+        { id: 'flutter:build:android', label: 'Flutter · Build Android', category: 'build' as const, longRunning: false, task: 'build', args: [], flutterTarget: 'build-android' as const },
+        { id: 'flutter:build:ios', label: 'Flutter · Build iOS', category: 'build' as const, longRunning: false, task: 'build', args: [], flutterTarget: 'build-ios' as const },
+      ],
+      commandIds: [
+        'flutter:run:web',
+        'flutter:run:android',
+        'flutter:run:ios',
+        'flutter:test',
+        'flutter:build:web',
+        'flutter:build:android',
+        'flutter:build:ios',
+      ],
+      defaultCommandId: 'flutter:run:ios',
+    };
+    fixture.componentRef.setInput('projects', [flutterProject]);
+    fixture.detectChanges();
+
+    const options: HTMLOptionElement[] = [
+      ...fixture.nativeElement.querySelectorAll('.script-select option'),
+    ];
+    expect(options.map((option) => option.textContent?.trim())).toEqual([
+      'Flutter · Run',
+      'Flutter · Test',
+      'Flutter · Build',
+    ]);
+    expect((fixture.nativeElement.querySelector('.script-select select') as HTMLSelectElement).value)
+      .toBe('flutter:run:web');
   });
 
   it('does not reuse a command selected for another workspace', () => {
@@ -204,7 +438,7 @@ describe('ProcessTableComponent', () => {
     fixture.detectChanges();
 
     let select: HTMLSelectElement =
-      fixture.nativeElement.querySelector('.script-select');
+      fixture.nativeElement.querySelector('.script-select select');
     select.value = 'node:script:ng';
     select.dispatchEvent(new Event('change'));
     fixture.detectChanges();
@@ -212,7 +446,7 @@ describe('ProcessTableComponent', () => {
 
     fixture.componentRef.setInput('workspaceId', 'workspace-2');
     fixture.detectChanges();
-    select = fixture.nativeElement.querySelector('.script-select');
+    select = fixture.nativeElement.querySelector('.script-select select');
 
     expect(select.value).toBe('node:script:start');
     expect(fixture.componentInstance.selectedScript(project)).toBe('start');

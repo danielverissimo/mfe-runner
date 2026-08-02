@@ -2,6 +2,25 @@ export const IPC_CHANNELS = Object.freeze({
   getSnapshot: 'runner:get-snapshot',
   listNodeVersions: 'runner:list-node-versions',
   listRuntimeInstallations: 'runner:list-runtime-installations',
+  listFlutterDevices: 'runner:list-flutter-devices',
+  listAndroidEmulators: 'runner:list-android-emulators',
+  launchAndroidEmulator: 'runner:launch-android-emulator',
+  getNgrokStatus: 'runner:get-ngrok-status',
+  listNgrokDomains: 'runner:list-ngrok-domains',
+  createNgrokDomain: 'runner:create-ngrok-domain',
+  startNgrokTunnel: 'runner:start-ngrok-tunnel',
+  stopNgrokTunnel: 'runner:stop-ngrok-tunnel',
+  openNgrokTunnel: 'runner:open-ngrok-tunnel',
+  openNgrokResource: 'runner:open-ngrok-resource',
+  openNgrokConfig: 'runner:open-ngrok-config',
+  chooseNgrokExecutable: 'runner:choose-ngrok-executable',
+  discoverExternalServices: 'runner:discover-external-services',
+  chooseExternalLogFile: 'runner:choose-external-log-file',
+  addExternalService: 'runner:add-external-service',
+  removeExternalService: 'runner:remove-external-service',
+  terminateExternalService: 'runner:terminate-external-service',
+  rebindExternalService: 'runner:rebind-external-service',
+  openExternalServiceAddress: 'runner:open-external-service-address',
   chooseRuntimePath: 'runner:choose-runtime-path',
   openRuntimeDownload: 'runner:open-runtime-download',
   chooseProjectDirectory: 'runner:choose-project-directory',
@@ -52,6 +71,7 @@ export const ECOSYSTEM_IDS = new Set([
   'python',
   'rust',
   'go',
+  'flutter',
 ]);
 export const EXECUTION_POLICY_COMPONENTS = new Set([
   'runtime',
@@ -59,6 +79,15 @@ export const EXECUTION_POLICY_COMPONENTS = new Set([
   'packageManager',
 ]);
 export const ENVIRONMENTS = new Set(['local', 'des', 'hom', 'prod']);
+const NGROK_MANAGED_DOMAIN_SUFFIXES = new Set([
+  'ngrok.app',
+  'ngrok.dev',
+  'ngrok.pizza',
+  'ngrok.pro',
+  'ngrok-free.app',
+  'ngrok-free.dev',
+  'ngrok.io',
+]);
 
 export function validateRuntimeComponentRequest(value) {
   const request = assertPlainObject(value, 'Seleção de runtime');
@@ -368,6 +397,146 @@ export function validateWorkspaceRequest(value) {
   };
 }
 
+function validatePort(value, label = 'Porta') {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new TypeError(`${label} inválida.`);
+  }
+  return port;
+}
+
+export function validateExternalServiceHost(value) {
+  const host = assertNonEmptyString(value, 'Host do serviço externo', 253)
+    .toLowerCase();
+  if (
+    host.includes('/') ||
+    host.includes('\\') ||
+    host.includes('@') ||
+    host.includes('://') ||
+    /\s/.test(host) ||
+    (!/^\[[0-9a-f:.]+\]$/i.test(host) &&
+      !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(host))
+  ) {
+    throw new TypeError('Host do serviço externo inválido.');
+  }
+  return host;
+}
+
+export function validateExternalServiceConfig(value) {
+  const service = assertPlainObject(value, 'Serviço externo');
+  const id = assertNonEmptyString(service.id, 'ID do serviço externo', 128);
+  if (!id.startsWith('external-service:')) {
+    throw new TypeError('ID do serviço externo inválido.');
+  }
+  const scheme = assertNonEmptyString(service.scheme, 'Protocolo', 8);
+  if (!new Set(['http', 'https']).has(scheme)) {
+    throw new TypeError(`Protocolo externo não suportado: ${scheme}.`);
+  }
+  const provider = assertNonEmptyString(service.provider, 'Origem externa', 16);
+  if (!new Set(['process', 'docker']).has(provider)) {
+    throw new TypeError(`Origem externa não suportada: ${provider}.`);
+  }
+  const logSourceValue = service.logSource ?? { type: 'none' };
+  const logSource = assertPlainObject(logSourceValue, 'Fonte de logs externa');
+  const logType = assertNonEmptyString(logSource.type, 'Tipo de log externo', 16);
+  if (!new Set(['none', 'file', 'docker']).has(logType)) {
+    throw new TypeError(`Tipo de log externo não suportado: ${logType}.`);
+  }
+  if (provider === 'docker' && logType !== 'docker') {
+    throw new TypeError('Containers Docker devem usar a fonte de logs Docker.');
+  }
+  if (provider !== 'docker' && logType === 'docker') {
+    throw new TypeError('Logs Docker exigem um container Docker.');
+  }
+  const filePath = logType === 'file'
+    ? assertNonEmptyString(logSource.filePath, 'Arquivo de log externo', 4096)
+    : undefined;
+  const identityValue = service.identity ?? {};
+  const identity = assertPlainObject(identityValue, 'Identidade externa');
+  const pid = identity.pid === undefined || identity.pid === null
+    ? undefined
+    : Number(identity.pid);
+  if (pid !== undefined && (!Number.isInteger(pid) || pid <= 1)) {
+    throw new TypeError('PID externo inválido.');
+  }
+  const containerId = assertOptionalString(
+    identity.containerId,
+    'Container Docker',
+    128,
+  );
+  if (provider === 'docker' && !containerId) {
+    throw new TypeError('Informe a identidade do container Docker.');
+  }
+  const identityName = assertOptionalString(identity.name, 'Nome da identidade', 200);
+  const image = assertOptionalString(identity.image, 'Imagem Docker', 500);
+  return {
+    id,
+    name: assertNonEmptyString(service.name, 'Nome do serviço externo', 100),
+    scheme,
+    host: validateExternalServiceHost(service.host),
+    port: validatePort(service.port, 'Porta do serviço externo'),
+    provider,
+    identity: {
+      ...(pid ? { pid } : {}),
+      ...(containerId ? { containerId } : {}),
+      ...(identityName ? { name: identityName } : {}),
+      ...(image ? { image } : {}),
+    },
+    logSource: {
+      type: logType,
+      ...(filePath ? { filePath } : {}),
+    },
+  };
+}
+
+export function validateExternalServiceCreateRequest(value) {
+  const request = validateWorkspaceRequest(value);
+  const source = assertPlainObject(value, 'Cadastro do serviço externo');
+  const scheme = assertNonEmptyString(source.scheme, 'Protocolo', 8);
+  if (!new Set(['http', 'https']).has(scheme)) {
+    throw new TypeError(`Protocolo externo não suportado: ${scheme}.`);
+  }
+  const candidateId = assertOptionalString(
+    source.candidateId,
+    'Candidato externo',
+    300,
+  );
+  if (candidateId && !/^(?:process|docker):[a-z0-9_.:-]+$/i.test(candidateId)) {
+    throw new TypeError('Candidato externo inválido.');
+  }
+  const logFilePath = assertOptionalString(
+    source.logFilePath,
+    'Arquivo de log externo',
+    4096,
+  );
+  return {
+    ...request,
+    name: assertNonEmptyString(source.name, 'Nome do serviço externo', 100),
+    scheme,
+    host: validateExternalServiceHost(source.host),
+    port: validatePort(source.port, 'Porta do serviço externo'),
+    ...(candidateId ? { candidateId } : {}),
+    ...(logFilePath ? { logFilePath } : {}),
+  };
+}
+
+export function validateExternalServiceRequest(value) {
+  const request = validateWorkspaceRequest(value);
+  const source = assertPlainObject(value, 'Solicitação do serviço externo');
+  const serviceId = assertNonEmptyString(
+    source.serviceId,
+    'Serviço externo',
+    128,
+  );
+  if (!serviceId.startsWith('external-service:')) {
+    throw new TypeError('Serviço externo inválido.');
+  }
+  return {
+    ...request,
+    serviceId,
+  };
+}
+
 export function validateDirectoryPickerRequest(value) {
   if (value === undefined || value === null) return {};
   const request = assertPlainObject(value, 'Seleção de diretório');
@@ -382,6 +551,9 @@ export function validateProcessRequest(value) {
   const request = assertPlainObject(value, 'Solicitação de processo');
   const commandId = assertOptionalString(request.commandId, 'Comando', 160);
   const script = assertOptionalString(request.script, 'Script', 100);
+  const flutterTarget = request.flutterTarget === undefined
+    ? undefined
+    : validateFlutterTarget(request.flutterTarget);
   return {
     workspaceId: assertNonEmptyString(
       request.workspaceId,
@@ -391,6 +563,7 @@ export function validateProcessRequest(value) {
     projectId: assertNonEmptyString(request.projectId, 'Projeto', 1024),
     ...(commandId ? { commandId } : {}),
     ...(script ? { script } : {}),
+    ...(flutterTarget ? { flutterTarget } : {}),
   };
 }
 
@@ -479,6 +652,20 @@ export function validateIdePreference(value) {
   };
 }
 
+export function validateNgrokPreference(value) {
+  if (value === undefined || value === null) {
+    return { executablePath: null };
+  }
+  const preference = assertPlainObject(value, 'Configuração do ngrok');
+  return {
+    executablePath: assertOptionalString(
+      preference.executablePath,
+      'Executável do ngrok',
+      4096,
+    ) ?? null,
+  };
+}
+
 export function validateDiagnosticExportRequest(value) {
   const request = validateWorkspaceRequest(value);
   const source = assertPlainObject(value, 'Exportação de diagnóstico');
@@ -512,6 +699,9 @@ export function validateProjectUpdate(value) {
   }
   if (value.healthCheck !== undefined) {
     update.healthCheck = validateHealthCheck(value.healthCheck);
+  }
+  if (value.flutterTarget !== undefined) {
+    update.flutterTarget = validateFlutterTarget(value.flutterTarget);
   }
   if (value.defaultCommandId !== undefined) {
     update.defaultCommandId = assertOptionalString(
@@ -550,6 +740,85 @@ export function validateProjectUpdate(value) {
     update.startupOrder = value.startupOrder;
   }
   return update;
+}
+
+export function validateFlutterTarget(value) {
+  if (value === undefined || value === null) return null;
+  const target = assertPlainObject(value, 'Alvo Flutter');
+  const platform = assertNonEmptyString(target.platform, 'Plataforma Flutter', 16);
+  if (!new Set(['web', 'android', 'ios']).has(platform)) {
+    throw new TypeError(`Plataforma Flutter não suportada: ${platform}.`);
+  }
+  const deviceId = assertOptionalString(target.deviceId, 'Device Flutter', 256);
+  const deviceName = assertOptionalString(target.deviceName, 'Nome do device Flutter', 256);
+  return {
+    platform,
+    ...(deviceId ? { deviceId } : {}),
+    ...(deviceName ? { deviceName } : {}),
+  };
+}
+
+export function validateAndroidEmulatorRequest(value) {
+  const request = validateProjectRequest(value);
+  const source = assertPlainObject(value, 'Android Virtual Device');
+  return {
+    ...request,
+    emulatorId: assertNonEmptyString(
+      source.emulatorId,
+      'Android Virtual Device',
+      256,
+    ),
+  };
+}
+
+export function validateNgrokDomainCreateRequest(value) {
+  const request = assertPlainObject(value, 'Criação de domínio ngrok');
+  const name = assertNonEmptyString(
+    request.name,
+    'Nome do domínio ngrok',
+    63,
+  ).toLowerCase();
+  const suffix = assertNonEmptyString(
+    request.suffix,
+    'Opção de domínio ngrok',
+    32,
+  ).toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name)) {
+    throw new TypeError(
+      'Nome do domínio ngrok inválido. Informe somente letras, números ou hífen.',
+    );
+  }
+  if (!NGROK_MANAGED_DOMAIN_SUFFIXES.has(suffix)) {
+    throw new TypeError('Opção de domínio ngrok não suportada.');
+  }
+  return {
+    name,
+    suffix,
+    description: assertOptionalString(
+      request.description,
+      'Descrição do domínio ngrok',
+      255,
+    ) ?? '',
+  };
+}
+
+export function validateNgrokTunnelRequest(value) {
+  const request = validateProjectRequest(value);
+  const source = assertPlainObject(value, 'Túnel ngrok');
+  return {
+    ...request,
+    domainId: assertNonEmptyString(source.domainId, 'Domínio ngrok', 100),
+    domain: assertNonEmptyString(source.domain, 'Hostname ngrok', 253),
+  };
+}
+
+export function validateNgrokResourceRequest(value) {
+  const request = assertPlainObject(value, 'Recurso ngrok');
+  const resource = assertNonEmptyString(request.resource, 'Recurso ngrok', 32);
+  if (!new Set(['install', 'authtoken', 'apiKey', 'domains']).has(resource)) {
+    throw new TypeError(`Recurso ngrok não suportado: ${resource}.`);
+  }
+  return { resource };
 }
 
 export function validateProjectOrderUpdate(value) {

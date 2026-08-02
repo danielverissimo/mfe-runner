@@ -194,11 +194,14 @@
         <p>O pacote contém versões, diagnósticos e logs já redigidos.</p>
         <label>
           Escopo
-          <select [value]="exportScope" (change)="exportScope = $any($event.target).value">
+          <app-runner-select
+            [value]="exportScope"
+            (valueChange)="setExportScope($event)"
+          >
             <option value="workspace">Todos os logs da workspace</option>
             <option value="filtered">Logs filtrados atualmente</option>
             <option value="range" [disabled]="!rangeEntries.length">Intervalo selecionado</option>
-          </select>
+          </app-runner-select>
         </label>
         <label class="checkbox">
           <input

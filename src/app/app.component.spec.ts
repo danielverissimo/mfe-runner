@@ -5,13 +5,18 @@ import {
   tick,
 } from '@angular/core/testing';
 import { AppComponent } from './app.component';
-import { createBridgeFixture, snapshotFixture } from '../testing/runner-fixtures';
-import { RunnerSnapshot } from './core/models/runner.models';
+import {
+  createBridgeFixture,
+  projectFixture,
+  snapshotFixture,
+} from '../testing/runner-fixtures';
+import { DiscoveredProject, RunnerSnapshot } from './core/models/runner.models';
 
 describe('AppComponent workspace experience', () => {
   let fixture: ComponentFixture<AppComponent>;
 
   beforeEach(async () => {
+    localStorage.removeItem('mfe-runner.selected-workspace-id');
     localStorage.setItem('mfe-runner.language', 'pt-BR');
     window.runnerApi = createBridgeFixture();
     await TestBed.configureTestingModule({ imports: [AppComponent] })
@@ -57,6 +62,228 @@ describe('AppComponent workspace experience', () => {
     expect(text).not.toContain('Variáveis de Ambiente');
     expect(fixture.componentInstance.navigation.map((item) => item.id))
       .toEqual(['projects', 'workspaces', 'logs', 'settings']);
+  });
+
+  it('persists the selected workspace', () => {
+    fixture.componentInstance.selectWorkspace('workspace-1');
+
+    expect(fixture.componentInstance.selectedWorkspaceId()).toBe('workspace-1');
+    expect(localStorage.getItem('mfe-runner.selected-workspace-id'))
+      .toBe('workspace-1');
+  });
+
+  it('shows ngrok status in settings and queries domains only when the dialog opens', async () => {
+    const bridge = window.runnerApi!;
+    expect(bridge.listNgrokDomains).not.toHaveBeenCalled();
+    fixture.componentInstance.selectSection('settings');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Endpoint público');
+    expect(fixture.nativeElement.textContent).toContain('3.22.1');
+
+    await fixture.componentInstance.openNgrokDialog(projectFixture.id);
+    fixture.detectChanges();
+    expect(bridge.listNgrokDomains).toHaveBeenCalledTimes(1);
+    expect(fixture.nativeElement.querySelector('app-ngrok-dialog')).toBeTruthy();
+  });
+
+  it('opens external-service discovery only after an explicit action', async () => {
+    const bridge = window.runnerApi!;
+    expect(bridge.discoverExternalServices).not.toHaveBeenCalled();
+
+    await fixture.componentInstance.openExternalServiceDialog();
+    fixture.detectChanges();
+
+    expect(bridge.discoverExternalServices).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1',
+    });
+    expect(fixture.nativeElement.querySelector('app-external-service-dialog'))
+      .toBeTruthy();
+  });
+
+  it('copies ngrok credential commands individually and opens the detected config', async () => {
+    const bridge = window.runnerApi!;
+    fixture.componentInstance.selectSection('settings');
+    fixture.detectChanges();
+
+    const authtokenButton: HTMLButtonElement = fixture.nativeElement
+      .querySelector('[aria-label="Copiar comando do authtoken do ngrok"]');
+    authtokenButton.click();
+    await Promise.resolve();
+    expect(bridge.copyText).toHaveBeenCalledWith({
+      text: 'ngrok config add-authtoken <AUTHTOKEN>',
+    });
+
+    const apiKeyButton: HTMLButtonElement = fixture.nativeElement
+      .querySelector('[aria-label="Copiar comando da API key do ngrok"]');
+    apiKeyButton.click();
+    await Promise.resolve();
+    expect(bridge.copyText).toHaveBeenCalledWith({
+      text: 'ngrok config add-api-key <API_KEY>',
+    });
+
+    const openConfigButton: HTMLButtonElement = fixture.nativeElement
+      .querySelector('[aria-label="Abrir configuração do ngrok no editor"]');
+    const commandRows = fixture.nativeElement.querySelectorAll('.ngrok-command');
+    const configRow = fixture.nativeElement.querySelector('.ngrok-status__row--config');
+    expect(commandRows.length).toBe(2);
+    expect(commandRows[0].querySelector('.ngrok-command__content')).toBeTruthy();
+    expect(commandRows[0].querySelector('app-runner-icon')).toBeTruthy();
+    expect(configRow).toBeTruthy();
+    expect(openConfigButton.classList).toContain('ngrok-status__open');
+    openConfigButton.click();
+    await Promise.resolve();
+    expect(bridge.openNgrokConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the Flutter destination modal and starts with the selected device', async () => {
+    const flutterProject: DiscoveredProject = {
+      ...projectFixture,
+      ecosystem: 'flutter',
+      technology: 'Flutter',
+      supportLevel: 'beta',
+      commands: [
+        { id: 'flutter:run:web', label: 'Flutter · Run Web', category: 'run', longRunning: true, task: 'run', args: [], flutterTarget: 'web' },
+        { id: 'flutter:run:android', label: 'Flutter · Run Android', category: 'run', longRunning: true, task: 'run', args: [], flutterTarget: 'android' },
+        { id: 'flutter:run:ios', label: 'Flutter · Run iOS', category: 'run', longRunning: true, task: 'run', args: [], flutterTarget: 'ios' },
+        { id: 'flutter:test', label: 'Flutter · Test', category: 'test', longRunning: false, task: 'test', args: [], flutterTarget: 'test' },
+        { id: 'flutter:build:web', label: 'Flutter · Build Web', category: 'build', longRunning: false, task: 'build', args: [], flutterTarget: 'build-web' },
+        { id: 'flutter:build:android', label: 'Flutter · Build Android', category: 'build', longRunning: false, task: 'build', args: [], flutterTarget: 'build-android' },
+        { id: 'flutter:build:ios', label: 'Flutter · Build iOS', category: 'build', longRunning: false, task: 'build', args: [], flutterTarget: 'build-ios' },
+      ],
+      commandIds: [
+        'flutter:run:web',
+        'flutter:run:android',
+        'flutter:run:ios',
+        'flutter:test',
+        'flutter:build:web',
+        'flutter:build:android',
+        'flutter:build:ios',
+      ],
+      defaultCommandId: 'flutter:run:web',
+      flutterTarget: { platform: 'web' },
+    };
+    const catalog = {
+      ...snapshotFixture.workspaces[0],
+      projects: [flutterProject],
+    };
+    fixture.componentInstance.runner.snapshot.set({
+      ...snapshotFixture,
+      workspaces: [catalog],
+    });
+    const listFlutterDevices = window.runnerApi?.listFlutterDevices as jasmine.Spy;
+    listFlutterDevices.and.resolveTo({
+      devices: [{
+        id: 'ios-1',
+        name: 'iPhone',
+        platform: 'ios',
+        available: true,
+        emulator: true,
+      }],
+    });
+
+    await fixture.componentInstance.processAction('start', {
+      workspaceId: 'workspace-1',
+      projectId: flutterProject.id,
+      commandId: 'flutter:run:web',
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.flutterLaunchContext()?.action).toBe('run');
+    expect(window.runnerApi?.listFlutterDevices).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1',
+      projectId: flutterProject.id,
+    });
+    expect(fixture.nativeElement.querySelector('app-flutter-launch-dialog'))
+      .not.toBeNull();
+    expect(window.runnerApi?.startProject).not.toHaveBeenCalled();
+
+    await fixture.componentInstance.launchFlutter({
+      action: 'run',
+      target: { platform: 'ios', deviceId: 'ios-1', deviceName: 'iPhone' },
+    });
+
+    expect(window.runnerApi?.startProject).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1',
+      projectId: flutterProject.id,
+      commandId: 'flutter:run:ios',
+      flutterTarget: {
+        platform: 'ios',
+        deviceId: 'ios-1',
+        deviceName: 'iPhone',
+      },
+    });
+    expect(fixture.componentInstance.flutterLaunchContext()).toBeNull();
+  });
+
+  it('starts an AVD and continues automatically when Flutter detects one new emulator', async () => {
+    const flutterProject: DiscoveredProject = {
+      ...projectFixture,
+      ecosystem: 'flutter',
+      technology: 'Flutter',
+      supportLevel: 'beta',
+      commands: [{
+        id: 'flutter:run:android',
+        label: 'Flutter · Run Android',
+        category: 'run',
+        longRunning: true,
+        task: 'run',
+        args: [],
+        flutterTarget: 'android',
+      }],
+      commandIds: ['flutter:run:android'],
+      defaultCommandId: 'flutter:run:android',
+      flutterTarget: { platform: 'android' },
+    };
+    const catalog = {
+      ...snapshotFixture.workspaces[0],
+      projects: [flutterProject],
+    };
+    fixture.componentInstance.runner.snapshot.set({
+      ...snapshotFixture,
+      workspaces: [catalog],
+    });
+    const listFlutterDevices = window.runnerApi?.listFlutterDevices as jasmine.Spy;
+    listFlutterDevices.and.returnValues(
+      Promise.resolve({ devices: [] }),
+      Promise.resolve({
+        devices: [{
+          id: 'emulator-5554',
+          name: 'Pixel 9a',
+          platform: 'android',
+          available: true,
+          emulator: true,
+        }],
+      }),
+    );
+    (window.runnerApi?.listAndroidEmulators as jasmine.Spy).and.resolveTo({
+      emulators: [{ id: 'Pixel_9a', name: 'Pixel_9a' }],
+    });
+
+    await fixture.componentInstance.processAction('start', {
+      workspaceId: 'workspace-1',
+      projectId: flutterProject.id,
+      commandId: 'flutter:run:android',
+    });
+    await fixture.whenStable();
+    await fixture.componentInstance.startAndroidEmulator('Pixel_9a');
+
+    expect(window.runnerApi?.launchAndroidEmulator).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1',
+      projectId: flutterProject.id,
+      emulatorId: 'Pixel_9a',
+    });
+    expect(window.runnerApi?.startProject).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1',
+      projectId: flutterProject.id,
+      commandId: 'flutter:run:android',
+      flutterTarget: {
+        platform: 'android',
+        deviceId: 'emulator-5554',
+        deviceName: 'Pixel 9a',
+      },
+    });
+    expect(fixture.componentInstance.flutterLaunchContext()).toBeNull();
   });
 
   it('renders shell first and MFEs in one process table', () => {
@@ -114,7 +341,47 @@ describe('AppComponent workspace experience', () => {
       'play',
       'warning',
       'diamond',
+      'link',
     ]);
+  });
+
+  it('shows the number of external services in the workspace summary', () => {
+    fixture.componentInstance.runner.snapshot.update((snapshot) => ({
+      ...snapshot,
+      workspaces: snapshot.workspaces.map((catalog) => ({
+        ...catalog,
+        workspace: {
+          ...catalog.workspace,
+          externalServices: [{
+            id: 'external-service:api',
+            name: 'API externa',
+            scheme: 'http',
+            host: 'localhost',
+            port: 8080,
+            provider: 'process',
+            identity: { pid: 4321, name: 'API externa' },
+            logSource: { type: 'none' },
+          }],
+        },
+      })),
+    }));
+    fixture.detectChanges();
+
+    const metric = fixture.nativeElement.querySelector(
+      '.summary-icon--external-services',
+    ).parentElement as HTMLElement;
+    expect(fixture.componentInstance.workspaceMetrics().externalServices).toBe(1);
+    expect(metric.textContent).toContain('1');
+    expect(metric.textContent).toContain('Serviços externos');
+  });
+
+  it('stacks the environment label above its value in the workspace summary', () => {
+    const environment = fixture.nativeElement.querySelector(
+      '.project-summary__environment',
+    ) as HTMLElement;
+
+    expect([...environment.children].map((child) => child.textContent?.trim()))
+      .toEqual(['Ambiente', 'LOCAL']);
   });
 
   it('explains that an excluded project can return on workspace rediscovery', async () => {
@@ -225,6 +492,7 @@ describe('AppComponent workspace experience', () => {
         exitCode: null,
         message: 'Saudável',
         logs: [],
+        ngrok: null,
       }],
     }));
     fixture.componentInstance.projectVisibility.set('running');
@@ -312,6 +580,7 @@ describe('AppComponent workspace experience', () => {
         exitCode: null,
         message: 'Saudável',
         logs: [],
+        ngrok: null,
       }],
     }));
     fixture.componentInstance.projectVisibility.set('running');
@@ -451,7 +720,7 @@ describe('AppComponent workspace experience', () => {
     await fixture.componentInstance.updateGlobalExecutionMode(
       'java-maven',
       'runtime',
-      { target: { value: 'explicit' } } as unknown as Event,
+      'explicit',
     );
     fixture.detectChanges();
 
@@ -497,7 +766,7 @@ describe('AppComponent workspace experience', () => {
     await fixture.componentInstance.updateGlobalExecutionMode(
       'python',
       'runtime',
-      { target: { value: 'auto' } } as unknown as Event,
+      'auto',
     );
 
     expect(updateSettings).toHaveBeenCalledOnceWith({
@@ -516,7 +785,7 @@ describe('AppComponent workspace experience', () => {
     await fixture.componentInstance.updateGlobalExecutionMode(
       'java-maven',
       'runtime',
-      { target: { value: 'explicit' } } as unknown as Event,
+      'explicit',
     );
 
     expect(window.runnerApi?.listRuntimeInstallations).toHaveBeenCalledWith({
@@ -799,6 +1068,49 @@ describe('AppComponent workspace experience', () => {
     expect(card.textContent).toContain('Atualizações do MFE Runner');
     expect(card.textContent).toContain('Versão instalada');
     expect(card.textContent).toContain('Buscar atualizações');
+  });
+});
+
+describe('AppComponent persisted workspace', () => {
+  let fixture: ComponentFixture<AppComponent>;
+
+  beforeEach(async () => {
+    localStorage.setItem('mfe-runner.language', 'pt-BR');
+    localStorage.setItem('mfe-runner.selected-workspace-id', 'workspace-2');
+    const firstCatalog = snapshotFixture.workspaces[0];
+    const secondCatalog = {
+      ...firstCatalog,
+      workspace: {
+        ...firstCatalog.workspace,
+        id: 'workspace-2',
+        name: 'Workspace restaurada',
+      },
+    };
+    const snapshot: RunnerSnapshot = {
+      ...snapshotFixture,
+      config: {
+        ...snapshotFixture.config,
+        workspaces: [
+          firstCatalog.workspace,
+          secondCatalog.workspace,
+        ],
+      },
+      workspaces: [firstCatalog, secondCatalog],
+    };
+    window.runnerApi = createBridgeFixture(snapshot);
+    await TestBed.configureTestingModule({ imports: [AppComponent] })
+      .compileComponents();
+    fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  });
+
+  afterEach(() => delete window.runnerApi);
+
+  it('restores the last workspace when the app starts', () => {
+    expect(fixture.componentInstance.currentWorkspaceId()).toBe('workspace-2');
+    expect(fixture.nativeElement.textContent).toContain('Workspace restaurada');
   });
 });
 

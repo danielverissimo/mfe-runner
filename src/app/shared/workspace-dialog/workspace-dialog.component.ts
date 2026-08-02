@@ -26,6 +26,7 @@ import {
   WorkspaceInput,
 } from '../../core/models/runner.models';
 import { NodeVersionPickerComponent } from '../node-version-picker/node-version-picker.component';
+import { RunnerSelectComponent } from '../runner-select/runner-select.component';
 
 interface EditableProject {
   name: string;
@@ -57,7 +58,7 @@ interface EditableSource {
 @Component({
   selector: 'app-workspace-dialog',
   standalone: true,
-  imports: [FormsModule, NodeVersionPickerComponent],
+  imports: [FormsModule, NodeVersionPickerComponent, RunnerSelectComponent],
   templateUrl: './workspace-dialog.component.html',
   styleUrl: './workspace-dialog.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -330,6 +331,7 @@ export class WorkspaceDialogComponent implements OnChanges {
       python: 'Python',
       rust: 'Rust',
       go: 'Go',
+      flutter: 'Flutter',
     }[ecosystem];
   }
 

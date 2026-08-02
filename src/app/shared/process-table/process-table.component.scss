@@ -19,12 +19,12 @@
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1178px;
+  min-width: 1198px;
   table-layout: fixed;
 }
 
 th:first-child {
-  width: 300px;
+  width: 280px;
 }
 
 th:nth-child(2) {
@@ -32,7 +32,7 @@ th:nth-child(2) {
 }
 
 th:nth-child(3) {
-  width: 180px;
+  width: 170px;
 }
 
 th:nth-child(4) {
@@ -44,11 +44,11 @@ th:nth-child(5) {
 }
 
 th:nth-child(6) {
-  width: 60px;
+  width: 82px;
 }
 
 th:nth-child(7) {
-  width: 380px;
+  width: 408px;
 }
 
 th {
@@ -83,18 +83,67 @@ tbody tr {
   transition: background 120ms ease;
 }
 
+.table-group-row th {
+  position: static;
+  z-index: auto;
+  padding: 7px 14px;
+  border-top: 1px solid var(--runner-border);
+  border-bottom: 1px solid var(--runner-border-soft);
+  color: var(--runner-text-muted);
+  background: color-mix(in srgb, var(--runner-panel-muted) 72%, var(--runner-panel));
+  box-shadow: none;
+  text-align: left;
+}
+
+.table-group-row th span {
+  color: var(--runner-text-secondary);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.table-group-row th small {
+  display: inline-grid;
+  min-width: 20px;
+  height: 18px;
+  margin-left: 7px;
+  place-items: center;
+  border: 1px solid var(--runner-border);
+  border-radius: 999px;
+  color: var(--runner-text-muted);
+  background: var(--runner-panel);
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+.table-group-row--external th {
+  border-top-color: color-mix(in srgb, var(--runner-info) 30%, var(--runner-border));
+  background: color-mix(in srgb, var(--runner-info) 6%, var(--runner-panel));
+}
+
+.table-group-row--external th span {
+  color: var(--runner-info);
+}
+
 tbody tr:hover {
   background: rgb(109 93 252 / 3.5%);
 }
 
 tbody tr[data-status="running"],
-tbody tr[data-status="healthy"] {
+tbody tr[data-status="healthy"],
+tbody tr[data-status="online"] {
   box-shadow: inset 2px 0 var(--runner-success);
 }
 
 tbody tr[data-status="failed"],
-tbody tr[data-status="conflict"] {
+tbody tr[data-status="conflict"],
+tbody tr[data-status="identity-mismatch"] {
   box-shadow: inset 2px 0 var(--runner-danger);
+}
+
+tbody tr[data-status="connecting"] {
+  box-shadow: inset 2px 0 var(--runner-info);
 }
 
 tbody tr[data-status="degraded"] {
@@ -138,6 +187,34 @@ tbody tr[data-status="degraded"] {
   background: rgb(255 189 89 / 9%);
 }
 
+.project__icon--external {
+  color: var(--runner-info);
+  border-color: color-mix(in srgb, var(--runner-info) 30%, transparent);
+  background: color-mix(in srgb, var(--runner-info) 10%, transparent);
+}
+
+.external-badge {
+  margin-left: 5px;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--runner-info) 35%, transparent);
+  border-radius: 999px;
+  color: var(--runner-info);
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.project .external-detail {
+  color: var(--runner-text-muted);
+}
+
+.external-upstream {
+  display: block;
+  overflow: hidden;
+  max-width: 150px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .project > div > strong,
 .project > div > span,
 .project > div > small,
@@ -158,6 +235,23 @@ tbody tr[data-status="degraded"] {
   font-size: 9px;
   white-space: nowrap;
 }
+
+.project .ngrok-context {
+  display: flex;
+  overflow: hidden;
+  max-width: 240px;
+  gap: 5px;
+  margin-top: 4px;
+  color: var(--runner-success);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ngrok-context b { font-weight: 800; text-transform: uppercase; }
+.ngrok-context[data-state="failed"] { color: var(--runner-danger); }
+.ngrok-context[data-state="starting"],
+.ngrok-context[data-state="stopping"] { color: var(--runner-warning); }
 
 .git-context b {
   overflow: hidden;
@@ -247,17 +341,28 @@ code {
 .script-select {
   width: 100%;
   max-width: 220px;
-  padding: 7px 28px 7px 9px;
-  border: 1px solid var(--runner-border);
-  border-radius: 8px;
-  color: var(--runner-text-secondary);
-  background: var(--runner-control);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
 }
 
+.icon-button--ngrok {
+  color: var(--runner-success);
+  border-color: color-mix(in srgb, var(--runner-success) 35%, var(--runner-border));
+}
+
+.icon-button--ngrok-stop {
+  border-color: rgb(255 97 120 / 25%);
+  color: var(--runner-danger);
+  background: rgb(255 97 120 / 7%);
+}
+
 .muted {
   color: var(--runner-text-muted);
+}
+
+.uptime-cell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .actions {

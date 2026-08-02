@@ -17,9 +17,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ConfigStore } from './lib/config-store.mjs';
 import {
   IPC_CHANNELS,
+  validateAndroidEmulatorRequest,
+  validateNgrokDomainCreateRequest,
+  validateNgrokResourceRequest,
+  validateNgrokTunnelRequest,
   assertNonEmptyString,
   assertPlainObject,
   validateDirectoryPickerRequest,
+  validateExternalServiceCreateRequest,
+  validateExternalServiceRequest,
   validateClipboardWriteRequest,
   validateDiagnosticExportRequest,
   validateLocalAddressRequest,
@@ -42,12 +48,29 @@ import {
 } from './lib/supervisor-exit-policy.mjs';
 import { restartActiveWorkspaceProjects } from './lib/workspace-lifecycle.mjs';
 import { listInstalledNodeVersions } from './lib/node-resolver.mjs';
-import { listRuntimeInstallations } from './lib/runtime-resolver.mjs';
+import { listFlutterDevices, listRuntimeInstallations } from './lib/runtime-resolver.mjs';
+import {
+  launchAndroidEmulator,
+  listAndroidEmulators,
+} from './lib/android-emulator.mjs';
+import {
+  composeNgrokManagedDomain,
+  createNgrokDomain,
+  createNgrokLaunchSpecification,
+  getNgrokStatus,
+  listNgrokDomains,
+} from './lib/ngrok.mjs';
 import { collectSystemInfo } from './lib/system-info.mjs';
 import {
   inspectExternalProcess,
   terminateExternalProcess as terminateExternalPortProcess,
 } from './lib/external-process.mjs';
+import {
+  buildExternalServiceDefinition,
+  discoverExternalServiceCandidates,
+  resolveDockerLogLaunch,
+  stopDockerContainer,
+} from './lib/external-services.mjs';
 import { APP_ICON_PATH, applyApplicationIcon } from './lib/app-icon.mjs';
 import {
   APP_NAME,
@@ -56,6 +79,7 @@ import {
 import {
   listDeveloperTools,
   isDeveloperExecutable,
+  openPathInIde,
   openProjectInIde,
   openProjectTerminal,
 } from './lib/developer-tools.mjs';
@@ -121,6 +145,7 @@ const updateManager = new UpdateManager({
   packaged: app.isPackaged,
 });
 const catalogs = new Map();
+const approvedExternalLogFiles = new Set();
 let mainWindow = null;
 let quitAttemptInProgress = false;
 let quitAllowed = false;
@@ -138,10 +163,25 @@ const RUNTIME_DOWNLOAD_URLS = Object.freeze({
   'rust:runtime': 'https://www.rust-lang.org/tools/install',
   'rust:tool': 'https://www.rust-lang.org/tools/install',
   'go:runtime': 'https://go.dev/dl/',
+  'flutter:runtime': 'https://docs.flutter.dev/get-started/install',
 });
 
+const NGROK_RESOURCE_URLS = Object.freeze({
+  install: 'https://ngrok.com/download',
+  authtoken: 'https://dashboard.ngrok.com/get-started/your-authtoken',
+  apiKey: 'https://dashboard.ngrok.com/api-keys',
+  domains: 'https://dashboard.ngrok.com/domains',
+});
+
+function ngrokOptions() {
+  return {
+    configuredPath:
+      configStore.snapshot.settings.ngrok?.executablePath ?? undefined,
+  };
+}
+
 function runtimePathUsesDirectory(ecosystem, component) {
-  return ecosystem.startsWith('java-') && component === 'runtime';
+  return (ecosystem.startsWith('java-') || ecosystem === 'flutter') && component === 'runtime';
 }
 
 function validateSender(frame) {
@@ -263,6 +303,7 @@ function buildSnapshot() {
       const orphanProjects = processes
         .filter((record) =>
           record.workspaceId === workspace.id &&
+          record.source !== 'external' &&
           !knownProjectIds.has(record.projectId) &&
           ['starting', 'linking', 'healthy', 'running', 'degraded', 'stopping']
             .includes(record.status)
@@ -370,11 +411,107 @@ async function refreshAllWorkspaces() {
   await Promise.all(workspaces.map((workspace) => refreshWorkspace(workspace.id)));
 }
 
+function externalDiscoveryExcludedPorts(workspaceId) {
+  const catalog = catalogs.get(workspaceId);
+  const projectPorts = catalog?.projects.map((project) => project.port)
+    .filter(Number.isInteger) ?? [];
+  const processPorts = supervisor.snapshot()
+    .filter((record) => record.workspaceId === workspaceId)
+    .map((record) => record.port)
+    .filter(Number.isInteger);
+  const workspace = configStore.snapshot.workspaces.find(
+    (item) => item.id === workspaceId,
+  );
+  const externalPorts = workspace?.externalServices?.map((service) => service.port) ?? [];
+  return [...new Set([...projectPorts, ...processPorts, ...externalPorts])];
+}
+
+async function discoverExternalCandidatesForWorkspace(workspaceId) {
+  const workspace = configStore.snapshot.workspaces.find(
+    (item) => item.id === workspaceId,
+  );
+  if (!workspace) throw new Error('Workspace não encontrada.');
+  return discoverExternalServiceCandidates({
+    excludedPorts: externalDiscoveryExcludedPorts(workspaceId),
+  });
+}
+
+async function attachExternalService(workspace, service) {
+  let logLaunch = null;
+  if (service.logSource?.type === 'docker') {
+    logLaunch = await resolveDockerLogLaunch(service).catch(() => null);
+  }
+  return supervisor.attachExternal({ workspace, service, logLaunch });
+}
+
+async function reconcileExternalServices() {
+  for (const workspace of configStore.snapshot.workspaces) {
+    const services = workspace.externalServices ?? [];
+    await supervisor.reconcileExternal(workspace, services);
+    const activeIds = new Set(
+      supervisor.snapshot()
+        .filter((record) =>
+          record.workspaceId === workspace.id && record.source === 'external'
+        )
+        .map((record) => record.projectId),
+    );
+    for (const service of services) {
+      if (!activeIds.has(service.id)) await attachExternalService(workspace, service);
+    }
+  }
+}
+
 function resolveProject(workspaceId, projectId) {
   const catalog = catalogs.get(workspaceId);
   const project = catalog?.projects.find((item) => item.id === projectId);
   if (!catalog || !project) throw new Error('Projeto não encontrado.');
   return { workspace: catalog.workspace, project };
+}
+
+function applyRequestedFlutterTarget(project, request) {
+  if (!request.flutterTarget) return project;
+  if (project.ecosystem !== 'flutter') {
+    throw new Error('Alvo Flutter só pode ser usado em um projeto Flutter.');
+  }
+  const profile = project.commands.find(
+    (command) => command.id === request.commandId,
+  );
+  if (!profile?.flutterTarget) {
+    throw new Error('Comando Flutter não disponível para o destino selecionado.');
+  }
+  const expectedTarget = profile.flutterTarget === 'test'
+    ? 'test'
+    : profile.category === 'build'
+      ? `build-${request.flutterTarget.platform}`
+      : request.flutterTarget.platform;
+  if (profile.flutterTarget !== expectedTarget) {
+    throw new Error('O comando Flutter não corresponde à plataforma selecionada.');
+  }
+  if (request.flutterTarget.platform === 'web' && request.flutterTarget.deviceId) {
+    throw new Error('Flutter Web não aceita seleção manual de device.');
+  }
+  if (
+    request.flutterTarget.platform !== 'web' &&
+    !request.flutterTarget.deviceId
+  ) {
+    throw new Error('Selecione um device Flutter para Android ou iOS.');
+  }
+  return { ...project, flutterTarget: request.flutterTarget };
+}
+
+async function validateFlutterTarget(project) {
+  if (project.ecosystem !== 'flutter' || !project.flutterTarget?.deviceId) return;
+  const result = await listFlutterDevices({
+    executable: project.runtime.components?.runtime?.path,
+    cwd: project.absolutePath,
+  });
+  const device = result.devices.find((item) => item.id === project.flutterTarget.deviceId);
+  if (!device || !device.available || (device.platform !== 'unknown' && device.platform !== project.flutterTarget.platform)) {
+    throw new Error(
+      `O device Flutter "${project.flutterTarget.deviceName ?? project.flutterTarget.deviceId}" ` +
+      'não está disponível para a plataforma selecionada.',
+    );
+  }
 }
 
 async function validateDirectory(rootPath) {
@@ -480,6 +617,7 @@ async function restorePreviouslyActiveProjects(workspaceId, records) {
     if (!project?.defaultCommandId && !project?.defaultScript) continue;
     try {
       assertProjectNotActiveInAnotherWorkspace(workspaceId, project);
+      await validateFlutterTarget(project);
       await supervisor.start({
         workspace: catalog.workspace,
         project,
@@ -693,6 +831,205 @@ function registerIpcHandlers() {
     withValidatedSender(async (payload) =>
       listRuntimeInstallations(validateRuntimeComponentRequest(payload))
     ),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.listFlutterDevices,
+    withValidatedSender(async (payload) => {
+      const request = validateProjectRequest(payload);
+      const catalog = catalogs.get(request.workspaceId);
+      const project = catalog?.projects.find((item) => item.id === request.projectId);
+      if (!project) throw new Error('Projeto não encontrado.');
+      if (project.ecosystem !== 'flutter') {
+        throw new Error('O projeto selecionado não é Flutter.');
+      }
+      return listFlutterDevices({
+        executable: project.runtime.components?.runtime?.path,
+        cwd: project.absolutePath,
+      });
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.listAndroidEmulators,
+    withValidatedSender(async (payload) => {
+      const request = validateProjectRequest(payload);
+      const { project } = resolveProject(request.workspaceId, request.projectId);
+      if (project.ecosystem !== 'flutter') {
+        throw new Error('O projeto selecionado não é Flutter.');
+      }
+      return listAndroidEmulators();
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.launchAndroidEmulator,
+    withValidatedSender(async (payload) => {
+      const request = validateAndroidEmulatorRequest(payload);
+      const { project } = resolveProject(request.workspaceId, request.projectId);
+      if (project.ecosystem !== 'flutter') {
+        throw new Error('O projeto selecionado não é Flutter.');
+      }
+      return launchAndroidEmulator({ emulatorId: request.emulatorId });
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.getNgrokStatus,
+    withValidatedSender(async () => getNgrokStatus(ngrokOptions())),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.listNgrokDomains,
+    withValidatedSender(async () => listNgrokDomains(ngrokOptions())),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.createNgrokDomain,
+    withValidatedSender(async (payload) => {
+      const request = validateNgrokDomainCreateRequest(payload);
+      const hostname = composeNgrokManagedDomain(request.name, request.suffix);
+      const catalog = await listNgrokDomains(ngrokOptions());
+      const existing = catalog.domains.find((domain) =>
+        domain.domain === hostname && domain.compatible
+      );
+      if (existing) return { canceled: false, domain: existing };
+      const confirmation = await dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Criar domínio no ngrok',
+        message: `Criar o domínio "${hostname}" na sua conta ngrok?`,
+        detail:
+          'Esta operação altera sua conta. Dependendo do plano, o domínio pode exigir upgrade ou gerar cobrança.',
+        buttons: ['Criar domínio', 'Cancelar'],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      });
+      if (confirmation.response !== 0) return { canceled: true, domain: null };
+      const domain = await createNgrokDomain({
+        domain: hostname,
+        description: request.description,
+        ...ngrokOptions(),
+      });
+      return { canceled: false, domain };
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.startNgrokTunnel,
+    withValidatedSender(async (payload) => {
+      const request = validateNgrokTunnelRequest(payload);
+      const projectCatalog = catalogs.get(request.workspaceId);
+      const project = projectCatalog?.projects.find(
+        (item) => item.id === request.projectId,
+      );
+      const workspace = configStore.snapshot.workspaces.find(
+        (item) => item.id === request.workspaceId,
+      );
+      const externalService = workspace?.externalServices?.find(
+        (item) => item.id === request.projectId,
+      );
+      if (!project && !externalService) throw new Error('Alvo do ngrok não encontrado.');
+      const managed = supervisor.snapshot().find((record) =>
+        record.workspaceId === request.workspaceId &&
+        record.projectId === request.projectId
+      );
+      if (!managed || !['running', 'healthy', 'degraded', 'online'].includes(managed.status)) {
+        throw new Error('O serviço precisa estar disponível antes de vincular o ngrok.');
+      }
+      if (!Number.isInteger(managed.port)) {
+        throw new Error('O processo não possui uma porta válida para o ngrok.');
+      }
+      const catalog = await listNgrokDomains(ngrokOptions());
+      const selected = catalog.domains.find((domain) =>
+        domain.id === request.domainId && domain.domain === request.domain
+      );
+      if (!selected) {
+        throw new Error('O domínio selecionado não pertence mais à conta ngrok.');
+      }
+      if (selected.wildcard) {
+        throw new Error('Domínios wildcard não são suportados nesta versão.');
+      }
+      const status = await getNgrokStatus(ngrokOptions());
+      if (!status.available) throw new Error(status.message);
+      const launch = createNgrokLaunchSpecification({
+        executablePath: status.executablePath,
+        configPath: status.configPath,
+        ...(externalService
+          ? {
+              upstream:
+                `${externalService.scheme}://${externalService.host}:` +
+                `${externalService.port}`,
+            }
+          : { port: managed.port }),
+        domainId: selected.id,
+        domain: selected.domain,
+      });
+      await supervisor.startNgrok(
+        request.workspaceId,
+        request.projectId,
+        {
+          ...launch,
+          ...(project?.absolutePath ? { cwd: project.absolutePath } : {}),
+          env: process.env,
+        },
+      );
+      return buildSnapshot();
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.stopNgrokTunnel,
+    withValidatedSender(async (payload) => {
+      const request = validateProjectRequest(payload);
+      await supervisor.stopNgrok(request.workspaceId, request.projectId);
+      return buildSnapshot();
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.openNgrokTunnel,
+    withValidatedSender(async (payload) => {
+      const request = validateProjectRequest(payload);
+      const managed = supervisor.snapshot().find((record) =>
+        record.workspaceId === request.workspaceId &&
+        record.projectId === request.projectId
+      );
+      if (managed?.ngrok?.status !== 'online' || !managed.ngrok.publicUrl) {
+        throw new Error('O serviço não possui um túnel ngrok disponível.');
+      }
+      await electronShell.openExternal(managed.ngrok.publicUrl);
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.openNgrokResource,
+    withValidatedSender(async (payload) => {
+      const { resource } = validateNgrokResourceRequest(payload);
+      await electronShell.openExternal(NGROK_RESOURCE_URLS[resource]);
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.openNgrokConfig,
+    withValidatedSender(async () => {
+      const status = await getNgrokStatus(ngrokOptions());
+      if (!status.configValid || !status.configPath) {
+        throw new Error('Nenhum arquivo de configuração válido do ngrok foi encontrado.');
+      }
+      const configPath = await realpath(status.configPath);
+      const details = await stat(configPath);
+      if (!details.isFile()) {
+        throw new Error('A configuração detectada do ngrok não é um arquivo válido.');
+      }
+      await openPathInIde(configPath, configStore.snapshot.settings);
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.chooseNgrokExecutable,
+    withValidatedSender(async (payload) => {
+      const { initialPath } = validateDirectoryPickerRequest(payload);
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Selecionar executável do ngrok',
+        properties: ['openFile'],
+        ...(initialPath ? { defaultPath: initialPath } : {}),
+      });
+      if (result.canceled) return null;
+      const executablePath = await realpath(result.filePaths[0]);
+      if (!(await isDeveloperExecutable(executablePath))) {
+        throw new Error('O arquivo selecionado não é um executável válido.');
+      }
+      return executablePath;
+    }),
   );
   ipcMain.handle(
     IPC_CHANNELS.chooseRuntimePath,
@@ -957,6 +1294,12 @@ function registerIpcHandlers() {
     withValidatedSender(async (payload) => {
       const { workspaceId } = validateWorkspaceRequest(payload);
       await stopWorkspace(workspaceId);
+      const workspace = configStore.snapshot.workspaces.find(
+        (item) => item.id === workspaceId,
+      );
+      for (const service of workspace?.externalServices ?? []) {
+        await supervisor.detachExternal(workspaceId, service.id);
+      }
       await configStore.removeWorkspace(workspaceId);
       catalogs.delete(workspaceId);
       broadcastSnapshot();
@@ -1092,6 +1435,171 @@ function registerIpcHandlers() {
     }),
   );
   ipcMain.handle(
+    IPC_CHANNELS.discoverExternalServices,
+    withValidatedSender(async (payload) => {
+      const { workspaceId } = validateWorkspaceRequest(payload);
+      return discoverExternalCandidatesForWorkspace(workspaceId);
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.chooseExternalLogFile,
+    withValidatedSender(async () => {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Selecionar arquivo de log',
+        properties: ['openFile'],
+        filters: [
+          { name: 'Logs e texto', extensions: ['log', 'txt', 'out'] },
+          { name: 'Todos os arquivos', extensions: ['*'] },
+        ],
+      });
+      if (result.canceled || !result.filePaths[0]) {
+        return { canceled: true, filePath: null };
+      }
+      const filePath = await realpath(result.filePaths[0]);
+      const info = await stat(filePath);
+      if (!info.isFile()) throw new Error('Selecione um arquivo de log válido.');
+      approvedExternalLogFiles.add(filePath);
+      return { canceled: false, filePath };
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.addExternalService,
+    withValidatedSender(async (payload) => {
+      const request = validateExternalServiceCreateRequest(payload);
+      const workspace = configStore.snapshot.workspaces.find(
+        (item) => item.id === request.workspaceId,
+      );
+      if (!workspace) throw new Error('Workspace não encontrada.');
+      if (externalDiscoveryExcludedPorts(request.workspaceId).includes(request.port)) {
+        throw new Error(
+          `A porta ${request.port} já pertence a um projeto ou vínculo desta workspace.`,
+        );
+      }
+      if (request.logFilePath) {
+        const canonicalLogFile = await realpath(request.logFilePath);
+        if (!approvedExternalLogFiles.has(canonicalLogFile)) {
+          throw new Error('Selecione o arquivo de log pelo diálogo do MFE Runner.');
+        }
+        request.logFilePath = canonicalLogFile;
+      }
+      const catalog = request.candidateId
+        ? await discoverExternalServiceCandidates({
+            excludedPorts: externalDiscoveryExcludedPorts(request.workspaceId),
+          })
+        : { candidates: [] };
+      const definition = await buildExternalServiceDefinition(request, catalog);
+      const service = await configStore.addExternalService(
+        request.workspaceId,
+        definition,
+      );
+      await attachExternalService(workspace, service);
+      return buildSnapshot();
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.removeExternalService,
+    withValidatedSender(async (payload) => {
+      const request = validateExternalServiceRequest(payload);
+      await supervisor.detachExternal(request.workspaceId, request.serviceId);
+      await configStore.removeExternalService(
+        request.workspaceId,
+        request.serviceId,
+      );
+      return buildSnapshot();
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.rebindExternalService,
+    withValidatedSender(async (payload) => {
+      const request = validateExternalServiceRequest(payload);
+      const workspace = configStore.snapshot.workspaces.find(
+        (item) => item.id === request.workspaceId,
+      );
+      const service = workspace?.externalServices?.find(
+        (item) => item.id === request.serviceId,
+      );
+      if (!workspace || !service) throw new Error('Serviço externo não encontrado.');
+      if (service.provider !== 'process') {
+        throw new Error('Somente processos locais podem atualizar a identidade desta forma.');
+      }
+      const current = await inspectExternalProcess(service.port);
+      if (!current) throw new Error('Nenhum processo está ouvindo na porta configurada.');
+      const confirmation = await dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Atualizar identidade externa?',
+        message: `Vincular ${service.name} ao PID ${current.pid}?`,
+        detail: 'Confirme apenas se este é o processo esperado para a porta configurada.',
+        buttons: ['Cancelar', 'Atualizar vínculo'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (confirmation.response !== 1) return buildSnapshot();
+      const updated = await configStore.replaceExternalService(
+        request.workspaceId,
+        request.serviceId,
+        { ...service, identity: { pid: current.pid, name: current.name } },
+      );
+      await attachExternalService(workspace, updated);
+      return buildSnapshot();
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.terminateExternalService,
+    withValidatedSender(async (payload) => {
+      const request = validateExternalServiceRequest(payload);
+      const workspace = configStore.snapshot.workspaces.find(
+        (item) => item.id === request.workspaceId,
+      );
+      const service = workspace?.externalServices?.find(
+        (item) => item.id === request.serviceId,
+      );
+      if (!service) throw new Error('Serviço externo não encontrado.');
+      const identity = service.provider === 'docker'
+        ? `container ${service.identity.name ?? service.identity.containerId}`
+        : `PID ${service.identity.pid ?? 'não identificado'}`;
+      const confirmation = await dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Encerrar serviço externo?',
+        message: `Encerrar ${service.name} (${identity})?`,
+        detail:
+          'Este serviço não foi iniciado pelo MFE Runner. Dados não salvos podem ser perdidos.',
+        buttons: ['Cancelar', 'Encerrar serviço'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (confirmation.response !== 1) return buildSnapshot();
+      await supervisor.stopNgrok(request.workspaceId, request.serviceId);
+      if (service.provider === 'docker') {
+        await stopDockerContainer(service);
+      } else {
+        if (!Number.isInteger(service.identity?.pid) ||
+            !['localhost', '127.0.0.1', '[::1]'].includes(service.host)) {
+          throw new Error('Este serviço não possui um processo local encerrável.');
+        }
+        await terminateExternalPortProcess(service.port, service.identity.pid);
+      }
+      return buildSnapshot();
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.openExternalServiceAddress,
+    withValidatedSender(async (payload) => {
+      const request = validateExternalServiceRequest(payload);
+      const workspace = configStore.snapshot.workspaces.find(
+        (item) => item.id === request.workspaceId,
+      );
+      const service = workspace?.externalServices?.find(
+        (item) => item.id === request.serviceId,
+      );
+      if (!service) throw new Error('Serviço externo não encontrado.');
+      await electronShell.openExternal(
+        `${service.scheme}://${service.host}:${service.port}`,
+      );
+    }),
+  );
+  ipcMain.handle(
     IPC_CHANNELS.startProject,
     withValidatedSender(async (payload) => {
       const request = validateProcessRequest(payload);
@@ -1100,9 +1608,11 @@ function registerIpcHandlers() {
         request.projectId,
       );
       assertProjectNotActiveInAnotherWorkspace(request.workspaceId, project);
+      const launchProject = applyRequestedFlutterTarget(project, request);
+      await validateFlutterTarget(launchProject);
       await supervisor.start({
         workspace,
-        project,
+        project: launchProject,
         commandId: request.commandId,
         script: request.script,
       });
@@ -1126,6 +1636,7 @@ function registerIpcHandlers() {
         request.projectId,
       );
       assertProjectNotActiveInAnotherWorkspace(request.workspaceId, project);
+      await validateFlutterTarget(project);
       const existing = supervisor.snapshot().find(
         (process) =>
           process.workspaceId === request.workspaceId &&
@@ -1377,6 +1888,7 @@ if (!hasSingleInstanceLock) {
     await supervisor.connectOrStart();
     await supervisor.setLogLimit(configStore.snapshot.settings.logLimit);
     await refreshAllWorkspaces();
+    await reconcileExternalServices();
     await createWindow();
     const updateTimer = setTimeout(() => {
       void updateManager.check();

@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   developerToolsInternals,
   listDeveloperTools,
+  openPathInIde,
 } from './developer-tools.mjs';
 
 test('keeps a configured executable without accepting command templates', async () => {
@@ -39,4 +40,23 @@ test('uses a fixed argument adapter for the macOS terminal', async () => {
     'Terminal',
     '/workspace/project',
   ]);
+});
+
+test('opens an authoritative file path with the configured IDE without a shell', async () => {
+  const calls = [];
+  await openPathInIde('/private/ngrok.yml', { ide: { id: 'vscode' } }, {
+    listTools: async () => ({
+      ideApplications: [{
+        id: 'vscode',
+        name: 'Visual Studio Code',
+        executablePath: '/usr/local/bin/code',
+      }],
+      selectedIdeId: 'vscode',
+    }),
+    launch: async (executablePath, args) => calls.push({ executablePath, args }),
+  });
+  assert.deepEqual(calls, [{
+    executablePath: '/usr/local/bin/code',
+    args: ['/private/ngrok.yml'],
+  }]);
 });

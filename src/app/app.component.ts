@@ -12,14 +12,20 @@ import {
 import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
+  AndroidEmulator,
   DiscoveredProject,
   AppTheme,
   Ecosystem,
   ExecutionPolicies,
+  ExternalServiceConfig,
+  ExternalServiceCreateInput,
   IdePreference,
   NodePolicyMode,
   ProcessStatus,
   ProcessRequest,
+  FlutterDevice,
+  FlutterProjectTarget,
+  NgrokManagedDomainSuffix,
   RunnerEnvironment,
   WorkspaceCatalog,
   WorkspaceConfig,
@@ -27,6 +33,16 @@ import {
 } from './core/models/runner.models';
 import { RunnerApiService } from './core/services/runner-api.service';
 import { LogPanelComponent } from './shared/log-panel/log-panel.component';
+import { ExternalServiceDialogComponent } from './shared/external-service-dialog/external-service-dialog.component';
+import {
+  FlutterLaunchAction,
+  FlutterLaunchDialogComponent,
+  FlutterLaunchSelection,
+} from './shared/flutter-launch-dialog/flutter-launch-dialog.component';
+import {
+  NgrokDialogComponent,
+  NgrokTunnelSelection,
+} from './shared/ngrok-dialog/ngrok-dialog.component';
 import { NodeVersionPickerComponent } from './shared/node-version-picker/node-version-picker.component';
 import { ProcessTableComponent } from './shared/process-table/process-table.component';
 import {
@@ -40,17 +56,40 @@ import {
   RunnerIconComponent,
   RunnerIconName,
 } from './shared/runner-icon/runner-icon.component';
+import { RunnerSelectComponent } from './shared/runner-select/runner-select.component';
 import { I18nRootDirective } from './core/i18n/i18n-root.directive';
 import {
   AppLanguage,
   I18nService,
 } from './core/i18n/i18n.service';
 
+const ANDROID_EMULATOR_POLL_INTERVAL_MS = 2000;
+const ANDROID_EMULATOR_POLL_ATTEMPTS = 61;
+const NGROK_CONFIG_COMMANDS = Object.freeze({
+  authtoken: 'ngrok config add-authtoken <AUTHTOKEN>',
+  apiKey: 'ngrok config add-api-key <API_KEY>',
+});
+
+type NgrokConfigCommand = keyof typeof NGROK_CONFIG_COMMANDS;
+
 type Section = 'projects' | 'workspaces' | 'logs' | 'settings';
 
 interface ProjectDialogContext {
   catalog: WorkspaceCatalog;
   project: DiscoveredProject;
+}
+
+interface FlutterLaunchContext {
+  catalog: WorkspaceCatalog;
+  project: DiscoveredProject;
+  action: FlutterLaunchAction;
+}
+
+interface NgrokDialogContext {
+  catalog: WorkspaceCatalog;
+  targetId: string;
+  targetName: string;
+  project?: DiscoveredProject;
 }
 
 interface WorkspaceRemovalContext {
@@ -93,11 +132,15 @@ function normalizeProjectSearch(value: string): string {
     FormsModule,
     ActionTooltipDirective,
     I18nRootDirective,
+    FlutterLaunchDialogComponent,
+    ExternalServiceDialogComponent,
     LogPanelComponent,
+    NgrokDialogComponent,
     NodeVersionPickerComponent,
     ProcessTableComponent,
     ProjectSettingsDialogComponent,
     RunnerIconComponent,
+    RunnerSelectComponent,
     SystemInfoDialogComponent,
     WorkspaceDialogComponent,
   ],
@@ -106,6 +149,8 @@ function normalizeProjectSearch(value: string): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppComponent implements OnInit, OnDestroy {
+  private static readonly WORKSPACE_STORAGE_KEY =
+    'mfe-runner.selected-workspace-id';
   private static readonly SPLIT_STORAGE_KEY =
     'mfe-runner.projects.process-area-percent';
   private static readonly DEFAULT_SPLIT = 68;
@@ -126,12 +171,25 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly workspaceDialogReviewMode = signal(false);
   readonly workspaceRemoval = signal<WorkspaceRemovalContext | null>(null);
   readonly projectDialogContext = signal<ProjectDialogContext | null>(null);
+  readonly flutterLaunchContext = signal<FlutterLaunchContext | null>(null);
+  readonly ngrokDialogContext = signal<NgrokDialogContext | null>(null);
+  readonly externalServiceDialogOpen = signal(false);
+  readonly externalServiceSubmitting = signal(false);
+  readonly ngrokCreating = signal(false);
+  readonly copiedNgrokCommand = signal<NgrokConfigCommand | null>(null);
   readonly systemInfoDialogOpen = signal(false);
   readonly projectVisibility = signal<ProjectVisibility>('all');
   readonly projectNameFilter = signal('');
   readonly globalVersionDraft = signal('');
   readonly globalPolicyPathDrafts = signal<Record<string, string>>({});
   readonly pendingExplicitPolicies = signal<Record<string, true>>({});
+  readonly flutterDevices = signal<FlutterDevice[]>([]);
+  readonly flutterDevicesLoading = signal(false);
+  readonly androidEmulators = signal<AndroidEmulator[]>([]);
+  readonly androidEmulatorsLoading = signal(false);
+  readonly androidEmulatorStarting = signal(false);
+  readonly androidEmulatorBooting = signal(false);
+  readonly androidEmulatorMessage = signal<string | null>(null);
   readonly effectiveTheme = signal<'light' | 'dark'>('dark');
   readonly logLimitDraft = signal('');
   readonly processAreaPercent = signal(this.readSplitPreference());
@@ -140,8 +198,12 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly installingUpdate = signal(false);
   @ViewChild(WorkspaceDialogComponent)
   private workspaceDialog?: WorkspaceDialogComponent;
+  @ViewChild(ExternalServiceDialogComponent)
+  private externalServiceDialog?: ExternalServiceDialogComponent;
   private workspaceBounds: DOMRect | null = null;
   private updateNoticeTimer?: ReturnType<typeof setTimeout>;
+  private ngrokCopyNoticeTimer?: ReturnType<typeof setTimeout>;
+  private androidEmulatorPollGeneration = 0;
   private syncedLogLimit?: number;
   private systemThemeQuery?: MediaQueryList;
   private readonly systemThemeChange = (): void => {
@@ -210,6 +272,12 @@ export class AppComponent implements OnInit, OnDestroy {
       supportLevel: 'beta',
       components: [{ id: 'runtime', label: 'Go toolchain' }],
     },
+    {
+      ecosystem: 'flutter',
+      label: 'Flutter',
+      supportLevel: 'beta',
+      components: [{ id: 'runtime', label: 'Flutter SDK / FVM' }],
+    },
   ];
 
   readonly selectedCatalog = computed(() => {
@@ -260,6 +328,10 @@ export class AppComponent implements OnInit, OnDestroy {
     return projects.filter((project) => activeProjectIds.has(project.id));
   });
 
+  readonly externalServices = computed(() =>
+    this.selectedCatalog()?.workspace.externalServices ?? []
+  );
+
   readonly projectEmptyMessage = computed(() => {
     if (normalizeProjectSearch(this.projectNameFilter())) {
       return this.projectVisibility() === 'running'
@@ -274,7 +346,13 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly workspaceMetrics = computed(() => {
     const catalog = this.selectedCatalog();
     if (!catalog) {
-      return { projects: 0, running: 0, attention: 0, manifests: 0 };
+      return {
+        projects: 0,
+        running: 0,
+        attention: 0,
+        manifests: 0,
+        externalServices: 0,
+      };
     }
     const processByProject = new Map(
       this.runner.processes()
@@ -296,6 +374,7 @@ export class AppComponent implements OnInit, OnDestroy {
         )
       ).length,
       manifests: catalog.manifests.length,
+      externalServices: catalog.workspace.externalServices?.length ?? 0,
     };
   });
 
@@ -322,7 +401,11 @@ export class AppComponent implements OnInit, OnDestroy {
         workspaces.length &&
         !workspaces.some((item) => item.workspace.id === selected)
       ) {
-        this.selectedWorkspaceId.set(workspaces[0].workspace.id);
+        const persistedWorkspaceId = this.readWorkspacePreference();
+        const restoredWorkspace = workspaces.find(
+          (item) => item.workspace.id === persistedWorkspaceId,
+        ) ?? workspaces[0];
+        this.activateWorkspace(restoredWorkspace.workspace.id);
       }
       if (!workspaces.length) this.selectedWorkspaceId.set(null);
       const globalPolicy = this.runner.settings().globalNodePolicy;
@@ -378,7 +461,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.androidEmulatorPollGeneration += 1;
     this.clearUpdateNoticeTimer();
+    this.clearNgrokCopyNoticeTimer();
     this.systemThemeQuery?.removeEventListener('change', this.systemThemeChange);
     this.runner.destroy();
   }
@@ -423,8 +508,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.section.set(destination === 'logs' ? 'projects' : destination);
   }
 
-  selectWorkspace(event: Event): void {
-    this.selectedWorkspaceId.set((event.target as HTMLSelectElement).value);
+  selectWorkspace(workspaceId: string): void {
+    this.activateWorkspace(workspaceId);
     this.selectedLogProjectId.set(undefined);
     this.selectedLogWorkspaceId.set(undefined);
   }
@@ -520,7 +605,7 @@ export class AppComponent implements OnInit, OnDestroy {
       const created = this.runner.workspaces().find(
         (catalog) => catalog.workspace.name === input.name,
       );
-      if (created) this.selectedWorkspaceId.set(created.workspace.id);
+      if (created) this.activateWorkspace(created.workspace.id);
       this.section.set('projects');
     }
   }
@@ -543,7 +628,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   openProjects(catalog: WorkspaceCatalog): void {
-    this.selectedWorkspaceId.set(catalog.workspace.id);
+    this.activateWorkspace(catalog.workspace.id);
     this.section.set('projects');
   }
 
@@ -553,10 +638,9 @@ export class AppComponent implements OnInit, OnDestroy {
 
   async updateEnvironment(
     catalog: WorkspaceCatalog,
-    event: Event,
+    value: string,
   ): Promise<void> {
-    const environment = (event.target as HTMLSelectElement)
-      .value as RunnerEnvironment;
+    const environment = value as RunnerEnvironment;
     await this.runner.updateWorkspace(
       catalog.workspace.id,
       this.workspaceInput(catalog.workspace, { environment }),
@@ -604,7 +688,60 @@ export class AppComponent implements OnInit, OnDestroy {
   openProjectSettings(projectId: string): void {
     const catalog = this.selectedCatalog();
     const project = catalog?.projects.find((item) => item.id === projectId);
-    if (catalog && project) this.projectDialogContext.set({ catalog, project });
+    if (catalog && project) {
+      this.projectDialogContext.set({ catalog, project });
+      if (project.ecosystem === 'flutter') void this.refreshFlutterDevices(catalog.workspace.id, project.id);
+    }
+  }
+
+  async refreshFlutterDevices(
+    workspaceId: string,
+    projectId: string,
+    loadAndroidFallback = false,
+  ): Promise<void> {
+    let shouldLoadAndroidFallback = false;
+    this.flutterDevicesLoading.set(true);
+    try {
+      const result = await this.runner.listFlutterDevices(workspaceId, projectId);
+      this.flutterDevices.set(result.devices);
+      if (result.message) this.runner.notice.set(result.message);
+      shouldLoadAndroidFallback = loadAndroidFallback && !result.devices.some(
+        (device) => device.platform === 'android' && device.available,
+      );
+      if (!shouldLoadAndroidFallback) {
+        this.androidEmulators.set([]);
+        this.androidEmulatorMessage.set(null);
+      }
+    } catch (error) {
+      this.runner.error.set(error instanceof Error ? error.message : 'Não foi possível consultar os devices Flutter.');
+    } finally {
+      this.flutterDevicesLoading.set(false);
+    }
+    if (shouldLoadAndroidFallback) {
+      await this.refreshAndroidEmulators(workspaceId, projectId);
+    }
+  }
+
+  async refreshAndroidEmulators(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<void> {
+    this.androidEmulatorsLoading.set(true);
+    this.androidEmulatorMessage.set(null);
+    try {
+      const result = await this.runner.listAndroidEmulators(workspaceId, projectId);
+      this.androidEmulators.set(result.emulators);
+      this.androidEmulatorMessage.set(result.message ?? null);
+    } catch (error) {
+      this.androidEmulators.set([]);
+      this.androidEmulatorMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível consultar os Android Virtual Devices.',
+      );
+    } finally {
+      this.androidEmulatorsLoading.set(false);
+    }
   }
 
   betaTechnologyNames(catalog: WorkspaceCatalog): string {
@@ -630,6 +767,7 @@ export class AppComponent implements OnInit, OnDestroy {
       change.executionPolicies,
       change.defaultCommandId,
       change.healthCheck,
+      change.flutterTarget,
     );
     if (!this.runner.error()) this.closeProjectSettings();
   }
@@ -644,9 +782,325 @@ export class AppComponent implements OnInit, OnDestroy {
     action: 'start' | 'stop' | 'restart',
     request: ProcessRequest,
   ): Promise<void> {
-    if (action === 'start') return this.runner.startProject(request);
+    if (action === 'start') {
+      const catalog = this.runner.snapshot().workspaces.find(
+        (item) => item.workspace.id === request.workspaceId,
+      );
+      const project = catalog?.projects.find(
+        (item) => item.id === request.projectId,
+      );
+      if (catalog && project?.ecosystem === 'flutter') {
+        const command = project.commands.find(
+          (item) => item.id === request.commandId,
+        );
+        const flutterAction = command?.category;
+        if (
+          flutterAction === 'run' ||
+          flutterAction === 'test' ||
+          flutterAction === 'build'
+        ) {
+          this.androidEmulatorPollGeneration += 1;
+          this.flutterDevices.set([]);
+          this.androidEmulators.set([]);
+          this.androidEmulatorMessage.set(null);
+          this.androidEmulatorStarting.set(false);
+          this.androidEmulatorBooting.set(false);
+          this.flutterLaunchContext.set({
+            catalog,
+            project,
+            action: flutterAction,
+          });
+          void this.refreshFlutterDevices(
+            catalog.workspace.id,
+            project.id,
+            true,
+          );
+          return Promise.resolve();
+        }
+      }
+      return this.runner.startProject(request);
+    }
     if (action === 'stop') return this.runner.stopProject(request);
     return this.runner.restartProject(request);
+  }
+
+  async openNgrokDialog(projectId: string): Promise<void> {
+    const catalog = this.selectedCatalog();
+    const project = catalog?.projects.find((item) => item.id === projectId);
+    if (!catalog || !project) return;
+    this.runner.ngrokDomains.set([]);
+    this.runner.ngrokDomainsMessage.set(null);
+    this.ngrokDialogContext.set({
+      catalog,
+      project,
+      targetId: project.id,
+      targetName: project.displayName,
+    });
+    await this.runner.refreshNgrokStatus();
+    if (this.runner.ngrokStatus().available) {
+      await this.runner.refreshNgrokDomains();
+    }
+  }
+
+  async openExternalNgrokDialog(serviceId: string): Promise<void> {
+    const catalog = this.selectedCatalog();
+    const service = catalog?.workspace.externalServices?.find(
+      (item) => item.id === serviceId,
+    );
+    if (!catalog || !service) return;
+    this.runner.ngrokDomains.set([]);
+    this.runner.ngrokDomainsMessage.set(null);
+    this.ngrokDialogContext.set({
+      catalog,
+      targetId: service.id,
+      targetName: service.name,
+    });
+    await this.runner.refreshNgrokStatus();
+    if (this.runner.ngrokStatus().available) {
+      await this.runner.refreshNgrokDomains();
+    }
+  }
+
+  closeNgrokDialog(): void {
+    if (!this.runner.loading() && !this.ngrokCreating()) {
+      this.ngrokDialogContext.set(null);
+    }
+  }
+
+  async createNgrokDomain(input: {
+    name: string;
+    suffix: NgrokManagedDomainSuffix;
+    description?: string;
+  }): Promise<void> {
+    if (this.ngrokCreating()) return;
+    this.ngrokCreating.set(true);
+    try {
+      const domain = await this.runner.createNgrokDomain(
+        input.name,
+        input.suffix,
+        input.description,
+      );
+      if (domain) {
+        this.runner.notice.set(
+          `Domínio ${domain.domain} criado. Se houver CNAME, configure o DNS antes de iniciar o túnel.`,
+        );
+      }
+    } finally {
+      this.ngrokCreating.set(false);
+    }
+  }
+
+  async startNgrokTunnel(selection: NgrokTunnelSelection): Promise<void> {
+    const context = this.ngrokDialogContext();
+    if (!context) return;
+    await this.runner.startNgrokTunnel({
+      workspaceId: context.catalog.workspace.id,
+      projectId: context.targetId,
+      domainId: selection.domainId,
+      domain: selection.domain,
+    });
+    if (!this.runner.error()) this.ngrokDialogContext.set(null);
+  }
+
+  async openExternalServiceDialog(): Promise<void> {
+    const workspaceId = this.currentWorkspaceId();
+    if (!workspaceId) return;
+    this.runner.error.set(null);
+    this.runner.externalServicesCatalog.set({
+      candidates: [],
+      docker: { available: false, message: 'Docker ainda não consultado.' },
+      processMessage: null,
+    });
+    this.externalServiceDialogOpen.set(true);
+    await this.runner.discoverExternalServices(workspaceId);
+  }
+
+  closeExternalServiceDialog(): void {
+    if (!this.externalServiceSubmitting() && !this.runner.externalServicesLoading()) {
+      this.externalServiceDialogOpen.set(false);
+    }
+  }
+
+  async refreshExternalServices(): Promise<void> {
+    const workspaceId = this.currentWorkspaceId();
+    if (workspaceId) await this.runner.discoverExternalServices(workspaceId);
+  }
+
+  async chooseExternalLogFile(): Promise<void> {
+    try {
+      const result = await this.runner.chooseExternalLogFile();
+      if (!result.canceled && result.filePath) {
+        this.externalServiceDialog?.setLogFile(result.filePath);
+      }
+    } catch {
+      this.runner.error.set('Não foi possível selecionar o arquivo de log.');
+    }
+  }
+
+  async addExternalService(input: ExternalServiceCreateInput): Promise<void> {
+    if (this.externalServiceSubmitting()) return;
+    this.externalServiceSubmitting.set(true);
+    try {
+      await this.runner.addExternalService(input);
+      if (!this.runner.error()) this.externalServiceDialogOpen.set(false);
+    } finally {
+      this.externalServiceSubmitting.set(false);
+    }
+  }
+
+  externalAddress(service: ExternalServiceConfig): string {
+    return `${service.scheme}://${service.host}:${service.port}`;
+  }
+
+  async stopNgrokTunnel(projectId: string): Promise<void> {
+    const workspaceId = this.currentWorkspaceId();
+    if (workspaceId) await this.runner.stopNgrokTunnel(workspaceId, projectId);
+  }
+
+  openNgrokTunnel(projectId: string): Promise<void> {
+    const workspaceId = this.currentWorkspaceId();
+    return workspaceId
+      ? this.runner.openNgrokTunnel(workspaceId, projectId)
+      : Promise.resolve();
+  }
+
+  openNgrokSettings(): void {
+    this.ngrokDialogContext.set(null);
+    this.selectSection('settings');
+  }
+
+  closeFlutterLaunch(): void {
+    if (!this.runner.loading() && !this.androidEmulatorStarting()) {
+      this.androidEmulatorPollGeneration += 1;
+      this.androidEmulatorBooting.set(false);
+      this.flutterLaunchContext.set(null);
+    }
+  }
+
+  async startAndroidEmulator(emulatorId: string): Promise<void> {
+    const context = this.flutterLaunchContext();
+    if (!context || this.androidEmulatorStarting() || this.androidEmulatorBooting()) return;
+    const generation = ++this.androidEmulatorPollGeneration;
+    const existingDeviceIds = new Set(
+      this.flutterDevices()
+        .filter((device) => device.platform === 'android')
+        .map((device) => device.id),
+    );
+    this.androidEmulatorStarting.set(true);
+    this.androidEmulatorMessage.set(null);
+    try {
+      await this.runner.launchAndroidEmulator(
+        context.catalog.workspace.id,
+        context.project.id,
+        emulatorId,
+      );
+    } catch (error) {
+      this.androidEmulatorMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível iniciar o Android Emulator.',
+      );
+      return;
+    } finally {
+      this.androidEmulatorStarting.set(false);
+    }
+    if (generation !== this.androidEmulatorPollGeneration) return;
+    this.androidEmulatorBooting.set(true);
+    this.androidEmulatorMessage.set(
+      'Aguardando o Android Emulator ficar disponível no Flutter…',
+    );
+    try {
+      for (let attempt = 0; attempt < ANDROID_EMULATOR_POLL_ATTEMPTS; attempt += 1) {
+        if (attempt > 0) await this.waitForAndroidEmulatorPoll();
+        if (generation !== this.androidEmulatorPollGeneration) return;
+        const result = await this.runner.listFlutterDevices(
+          context.catalog.workspace.id,
+          context.project.id,
+        );
+        if (generation !== this.androidEmulatorPollGeneration) return;
+        this.flutterDevices.set(result.devices);
+        const candidates = result.devices.filter(
+          (device) =>
+            device.platform === 'android' &&
+            device.available &&
+            device.emulator &&
+            !existingDeviceIds.has(device.id),
+        );
+        if (candidates.length === 1) {
+          const device = candidates[0];
+          this.androidEmulatorBooting.set(false);
+          this.androidEmulatorMessage.set(null);
+          await this.launchFlutter({
+            action: context.action,
+            target: {
+              platform: 'android',
+              deviceId: device.id,
+              deviceName: device.name,
+            },
+          });
+          return;
+        }
+        if (candidates.length > 1) {
+          this.androidEmulatorMessage.set(
+            'Mais de um emulator Android ficou disponível. Selecione o dispositivo desejado.',
+          );
+          return;
+        }
+      }
+      this.androidEmulatorMessage.set(
+        'O Android Emulator não ficou disponível no Flutter dentro de 120 segundos.',
+      );
+    } catch (error) {
+      this.androidEmulatorMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível confirmar o Android Emulator no Flutter.',
+      );
+    } finally {
+      if (generation === this.androidEmulatorPollGeneration) {
+        this.androidEmulatorBooting.set(false);
+      }
+    }
+  }
+
+  async launchFlutter(selection: FlutterLaunchSelection): Promise<void> {
+    const context = this.flutterLaunchContext();
+    if (!context) return;
+    const targetId = selection.action === 'test'
+      ? 'test'
+      : selection.action === 'build'
+        ? `build-${selection.target.platform}`
+        : selection.target.platform;
+    const command = context.project.commands.find(
+      (item) => item.flutterTarget === targetId,
+    );
+    if (!command) {
+      this.runner.error.set(
+        `O comando Flutter ${selection.action} para ${selection.target.platform} não está disponível.`,
+      );
+      return;
+    }
+    await this.runner.startProject({
+      workspaceId: context.catalog.workspace.id,
+      projectId: context.project.id,
+      commandId: command.id,
+      flutterTarget: this.normalizedFlutterTarget(selection.target),
+    });
+    if (!this.runner.error()) this.flutterLaunchContext.set(null);
+  }
+
+  private normalizedFlutterTarget(
+    target: FlutterProjectTarget,
+  ): FlutterProjectTarget {
+    return target.platform === 'web'
+      ? { platform: 'web' }
+      : target;
+  }
+
+  private waitForAndroidEmulatorPoll(): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ANDROID_EMULATOR_POLL_INTERVAL_MS);
+    });
   }
 
   linkLibraries(libraryId?: string, projectId?: string): void {
@@ -659,9 +1113,9 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  async updateGlobalNodeMode(event: Event): Promise<void> {
-    const mode = (event.target as HTMLSelectElement).value as
-      Exclude<NodePolicyMode, 'inherit'>;
+  async updateGlobalNodeMode(
+    mode: Exclude<NodePolicyMode, 'inherit'>,
+  ): Promise<void> {
     await this.runner.updateSettings({
       globalNodePolicy: {
         mode,
@@ -723,12 +1177,11 @@ export class AppComponent implements OnInit, OnDestroy {
   async updateGlobalExecutionMode(
     ecosystem: Ecosystem,
     component: PolicyComponent,
-    event: Event,
+    value: string,
   ): Promise<void> {
-    const mode = (event.target as HTMLSelectElement).value as
-      'auto' | 'explicit';
+    const mode = value as 'auto' | 'explicit';
     if (ecosystem === 'node' && component === 'runtime') {
-      await this.updateGlobalNodeMode(event);
+      await this.updateGlobalNodeMode(mode);
       return;
     }
     const key = `${ecosystem}:${component}`;
@@ -779,9 +1232,8 @@ export class AppComponent implements OnInit, OnDestroy {
   selectRuntimeInstallation(
     ecosystem: Ecosystem,
     component: PolicyComponent,
-    event: Event,
+    selectedPath: string,
   ): void {
-    const selectedPath = (event.target as HTMLSelectElement).value;
     if (selectedPath) {
       this.updateGlobalPolicyDraft(ecosystem, component, selectedPath);
     }
@@ -922,8 +1374,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!installStarted) this.installingUpdate.set(false);
   }
 
-  async selectIde(event: Event): Promise<void> {
-    const id = (event.target as HTMLSelectElement).value;
+  async selectIde(id: string): Promise<void> {
     const ide = this.runner.developerTools().ideApplications.find(
       (item) => item.id === id,
     );
@@ -950,6 +1401,63 @@ export class AppComponent implements OnInit, OnDestroy {
       executablePath,
     };
     await this.runner.saveIde(preference);
+  }
+
+  async browseNgrokExecutable(): Promise<void> {
+    const current = this.runner.settings().ngrok.executablePath ?? undefined;
+    const executablePath = await this.runner.chooseNgrokExecutable(current);
+    if (!executablePath) return;
+    await this.runner.updateSettings(
+      { ngrok: { executablePath } },
+      'Executável do ngrok atualizado.',
+    );
+    await this.runner.refreshNgrokStatus();
+  }
+
+  async useAutomaticNgrokDetection(): Promise<void> {
+    await this.runner.updateSettings(
+      { ngrok: { executablePath: null } },
+      'Detecção automática do ngrok restaurada.',
+    );
+    await this.runner.refreshNgrokStatus();
+  }
+
+  async testNgrokApi(): Promise<void> {
+    const domains = await this.runner.refreshNgrokDomains();
+    if (!this.runner.ngrokDomainsMessage()) {
+      this.runner.notice.set(
+        `Acesso à API do ngrok confirmado: ${domains.length} domínio(s).`,
+      );
+    }
+  }
+
+  async copyNgrokConfigCommand(command: NgrokConfigCommand): Promise<void> {
+    this.clearNgrokCopyNoticeTimer();
+    try {
+      await this.runner.copyText(NGROK_CONFIG_COMMANDS[command]);
+      this.copiedNgrokCommand.set(command);
+      this.ngrokCopyNoticeTimer = setTimeout(() => {
+        this.copiedNgrokCommand.set(null);
+        this.ngrokCopyNoticeTimer = undefined;
+      }, 2_500);
+    } catch {
+      this.copiedNgrokCommand.set(null);
+      this.runner.error.set('Não foi possível copiar o comando do ngrok.');
+    }
+  }
+
+  private clearNgrokCopyNoticeTimer(): void {
+    if (this.ngrokCopyNoticeTimer) {
+      clearTimeout(this.ngrokCopyNoticeTimer);
+      this.ngrokCopyNoticeTimer = undefined;
+    }
+  }
+
+  ngrokInstallCommand(): string {
+    const platform = this.runner.snapshot().platform;
+    if (platform === 'darwin') return 'brew install ngrok';
+    if (platform === 'win32') return 'winget install ngrok -s msstore';
+    return 'sudo snap install ngrok';
   }
 
   copyLocalAddress(port: number): Promise<void> {
@@ -1032,6 +1540,23 @@ export class AppComponent implements OnInit, OnDestroy {
       executionPolicies: workspace.executionPolicies,
       ...changes,
     };
+  }
+
+  private activateWorkspace(workspaceId: string): void {
+    this.selectedWorkspaceId.set(workspaceId);
+    try {
+      localStorage.setItem(AppComponent.WORKSPACE_STORAGE_KEY, workspaceId);
+    } catch {
+      // A preferência de workspace é opcional.
+    }
+  }
+
+  private readWorkspacePreference(): string | null {
+    try {
+      return localStorage.getItem(AppComponent.WORKSPACE_STORAGE_KEY);
+    } catch {
+      return null;
+    }
   }
 
   private updateSplit(clientY: number): void {

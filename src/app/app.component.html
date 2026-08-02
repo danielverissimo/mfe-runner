@@ -46,36 +46,45 @@
       <div class="topbar__actions">
         <label class="language-picker">
           <span>Idioma</span>
-          <select
+          <app-runner-select
+            size="compact"
             [ngModel]="i18n.language()"
             (ngModelChange)="changeLanguage($event)"
             [ngModelOptions]="{ standalone: true }"
-            aria-label="Idioma"
+            ariaLabel="Idioma"
           >
             @for (language of i18n.options; track language.code) {
               <option [value]="language.code">{{ language.label }}</option>
             }
-          </select>
+          </app-runner-select>
         </label>
         @if (runner.workspaces().length) {
           <label>
             <span>Workspace</span>
-            <select [value]="currentWorkspaceId()" (change)="selectWorkspace($event)">
+            <app-runner-select
+              size="compact"
+              [value]="currentWorkspaceId() ?? ''"
+              (valueChange)="selectWorkspace($event)"
+            >
               @for (catalog of runner.workspaces(); track catalog.workspace.id) {
                 <option [value]="catalog.workspace.id">{{ catalog.workspace.name }}</option>
               }
-            </select>
+            </app-runner-select>
           </label>
         }
         @if (selectedCatalog(); as catalog) {
           <label>
             <span>Ambiente</span>
-            <select [value]="catalog.workspace.environment" (change)="updateEnvironment(catalog, $event)">
+            <app-runner-select
+              size="compact"
+              [value]="catalog.workspace.environment"
+              (valueChange)="updateEnvironment(catalog, $event)"
+            >
               <option value="local">Local</option>
               <option value="des">Desenvolvimento</option>
               <option value="hom">Homologação</option>
               <option value="prod">Produção</option>
-            </select>
+            </app-runner-select>
           </label>
         }
         <button class="button button--primary" type="button" (click)="openWorkspaceDialog()">＋ Nova workspace</button>
@@ -183,7 +192,8 @@
               <div><span class="summary-icon summary-icon--running"><app-runner-icon name="play" [size]="20" /></span><strong>{{ workspaceMetrics().running }}</strong><small>Em execução</small></div>
               <div><span class="summary-icon summary-icon--attention"><app-runner-icon name="warning" [size]="20" /></span><strong>{{ workspaceMetrics().attention }}</strong><small>Com atenção</small></div>
               <div><span class="summary-icon summary-icon--manifests"><app-runner-icon name="diamond" [size]="20" /></span><strong>{{ workspaceMetrics().manifests }}</strong><small>Manifests</small></div>
-              <div><small>Ambiente</small><strong>{{ catalog.workspace.environment.toUpperCase() }}</strong></div>
+              <div><span class="summary-icon summary-icon--manifests summary-icon--external-services"><app-runner-icon name="link" [size]="20" /></span><strong>{{ workspaceMetrics().externalServices }}</strong><small>Serviços externos</small></div>
+              <div class="project-summary__environment"><small>Ambiente</small><strong>{{ catalog.workspace.environment.toUpperCase() }}</strong></div>
             </section>
 
             <div
@@ -229,11 +239,18 @@
                       >Em execução <span>{{ filteredRunningProjectCount() }}</span></button>
                     </div>
                     <span class="readonly">Fontes somente leitura</span>
+                    <button
+                      class="button external-service-button"
+                      type="button"
+                      [disabled]="runner.loading() || !runner.snapshot().supervisorConnected"
+                      (click)="openExternalServiceDialog()"
+                    >+ Vincular serviço externo</button>
                   </div>
                 </header>
                 <app-process-table
                   [workspaceId]="catalog.workspace.id"
                   [projects]="visibleProjects()"
+                  [externalServices]="externalServices()"
                   [processes]="runner.processes()"
                   [emptyMessage]="projectEmptyMessage()"
                   [busy]="runner.loading() || !runner.snapshot().supervisorConnected"
@@ -253,6 +270,16 @@
                   (copyPath)="runner.copyText($event)"
                   (copyAddress)="copyLocalAddress($event)"
                   (linkLibrary)="linkLibraries($event.libraryId, $event.projectId)"
+                  (linkNgrok)="openNgrokDialog($event)"
+                  (stopNgrok)="stopNgrokTunnel($event)"
+                  (openNgrok)="openNgrokTunnel($event)"
+                  (copyNgrokUrl)="runner.copyText($event)"
+                  (openExternalAddress)="runner.openExternalServiceAddress(catalog.workspace.id, $event)"
+                  (copyExternalAddress)="runner.copyText(externalAddress($event))"
+                  (removeExternalService)="runner.removeExternalService(catalog.workspace.id, $event)"
+                  (terminateExternalService)="runner.terminateExternalService(catalog.workspace.id, $event)"
+                  (rebindExternalService)="runner.rebindExternalService(catalog.workspace.id, $event)"
+                  (linkExternalNgrok)="openExternalNgrokDialog($event)"
                 />
               </section>
 
@@ -438,17 +465,17 @@
                       <section class="runtime-component">
                         <label>
                           <span>{{ component.label }}</span>
-                          <select
+                          <app-runner-select
                             [value]="
                               card.ecosystem === 'node' && component.id === 'runtime'
                                 ? runner.settings().globalNodePolicy.mode
                                 : globalExecutionMode(card.ecosystem, component.id)
                             "
-                            (change)="updateGlobalExecutionMode(card.ecosystem, component.id, $event)"
+                            (valueChange)="updateGlobalExecutionMode(card.ecosystem, component.id, $event)"
                           >
                             <option value="auto">Detectar automaticamente</option>
                             <option value="explicit">Selecionar explicitamente</option>
-                          </select>
+                          </app-runner-select>
                         </label>
                         @if (
                           card.ecosystem === 'node' &&
@@ -481,9 +508,9 @@
                             <div class="runtime-component__catalog">
                               <label>
                                 <span>Instalações detectadas</span>
-                                <select
+                                <app-runner-select
                                   [value]="globalPolicyDraft(card.ecosystem, component.id)"
-                                  (change)="selectRuntimeInstallation(card.ecosystem, component.id, $event)"
+                                  (valueChange)="selectRuntimeInstallation(card.ecosystem, component.id, $event)"
                                 >
                                   <option value="">
                                     {{ runtimeInstallationLabel(card.ecosystem, component.id) }}
@@ -500,7 +527,7 @@
                                       {{ installation.version ? ' · ' + installation.version : '' }}
                                     </option>
                                   }
-                                </select>
+                                </app-runner-select>
                               </label>
                               <button
                                 class="button"
@@ -545,6 +572,112 @@
                   </details>
                 }
               </div>
+            </article>
+            <article class="settings-card settings-card--wide theme-settings">
+              <div class="theme-settings__heading">
+                <span class="theme-settings__icon" aria-hidden="true">↗</span>
+                <div>
+                  <span class="eyebrow">Endpoint público</span>
+                  <h3>
+                    ngrok
+                    <span
+                      class="support-badge"
+                      [class.support-badge--stable]="runner.ngrokStatus().available"
+                    >{{ runner.ngrokStatus().available ? 'Disponível' : 'Configuração necessária' }}</span>
+                  </h3>
+                  <p>Vincule um domínio reservado a processos HTTP gerenciados pelo Runner.</p>
+                </div>
+              </div>
+
+              <div class="update-settings__status ngrok-status" aria-live="polite">
+                <div class="ngrok-status__row">
+                  <span>Instalação</span>
+                  <strong>{{ runner.ngrokStatus().installed ? (runner.ngrokStatus().version || 'Detectada') : 'Não encontrada' }}</strong>
+                </div>
+                <div class="ngrok-status__row">
+                  <span>Origem</span>
+                  <strong>{{ runner.ngrokStatus().source || '—' }}</strong>
+                </div>
+                <div class="ngrok-status__row ngrok-status__row--config">
+                  <span>Configuração</span>
+                  <strong class="ngrok-status__path" [title]="runner.ngrokStatus().configPath || ''">
+                    {{ runner.ngrokStatus().configPath || 'Não encontrada' }}
+                  </strong>
+                  @if (runner.ngrokStatus().configPath) {
+                    <button
+                      class="button button--compact ngrok-status__open"
+                      type="button"
+                      aria-label="Abrir configuração do ngrok no editor"
+                      (click)="runner.openNgrokConfig()"
+                    ><app-runner-icon name="external" [size]="14" /> Abrir no editor</button>
+                  }
+                </div>
+              </div>
+              <p>{{ runner.ngrokStatus().message }}</p>
+
+              @if (!runner.ngrokStatus().installed) {
+                <div class="runtime-component__explicit">
+                  <strong>Instale o agente oficial e atualize a detecção.</strong>
+                  <code>{{ ngrokInstallCommand() }}</code>
+                  <div class="settings-actions">
+                    <button class="button" type="button" (click)="runner.openNgrokResource('install')">Abrir instruções oficiais</button>
+                  </div>
+                </div>
+              } @else {
+                <div class="runtime-component__explicit">
+                  <p>O Runner não lê nem armazena credenciais. Configure-as diretamente no arquivo oficial do ngrok:</p>
+                  <div class="ngrok-command-list">
+                    <div class="ngrok-command">
+                      <div class="ngrok-command__content">
+                        <small>Authtoken</small>
+                        <code>ngrok config add-authtoken &lt;AUTHTOKEN&gt;</code>
+                      </div>
+                      <button
+                        class="button button--compact ngrok-command__copy"
+                        type="button"
+                        aria-label="Copiar comando do authtoken do ngrok"
+                        (click)="copyNgrokConfigCommand('authtoken')"
+                      ><app-runner-icon name="copy" [size]="14" /> {{ copiedNgrokCommand() === 'authtoken' ? 'Copiado' : 'Copiar' }}</button>
+                    </div>
+                    <div class="ngrok-command">
+                      <div class="ngrok-command__content">
+                        <small>API key</small>
+                        <code>ngrok config add-api-key &lt;API_KEY&gt;</code>
+                      </div>
+                      <button
+                        class="button button--compact ngrok-command__copy"
+                        type="button"
+                        aria-label="Copiar comando da API key do ngrok"
+                        (click)="copyNgrokConfigCommand('apiKey')"
+                      ><app-runner-icon name="copy" [size]="14" /> {{ copiedNgrokCommand() === 'apiKey' ? 'Copiado' : 'Copiar' }}</button>
+                    </div>
+                  </div>
+                  <div class="settings-actions">
+                    <button class="button" type="button" (click)="runner.openNgrokResource('authtoken')">Obter authtoken</button>
+                    <button class="button" type="button" (click)="runner.openNgrokResource('apiKey')">Obter API key</button>
+                    <button class="button" type="button" (click)="runner.openNgrokResource('domains')">Gerenciar domínios</button>
+                  </div>
+                </div>
+              }
+
+              <div class="settings-actions">
+                <button class="button" type="button" [disabled]="runner.ngrokStatusLoading()" (click)="runner.refreshNgrokStatus()">
+                  {{ runner.ngrokStatusLoading() ? 'Detectando…' : 'Redetectar' }}
+                </button>
+                <button class="button" type="button" (click)="browseNgrokExecutable()">Escolher executável…</button>
+                @if (runner.settings().ngrok.executablePath) {
+                  <button class="button" type="button" (click)="useAutomaticNgrokDetection()">Usar detecção automática</button>
+                }
+                <button
+                  class="button button--accent"
+                  type="button"
+                  [disabled]="!runner.ngrokStatus().available || runner.ngrokDomainsLoading()"
+                  (click)="testNgrokApi()"
+                >{{ runner.ngrokDomainsLoading() ? 'Testando…' : 'Testar acesso à API' }}</button>
+              </div>
+              @if (runner.ngrokDomainsMessage()) {
+                <small>{{ runner.ngrokDomainsMessage() }}</small>
+              }
             </article>
             <article class="settings-card settings-card--wide">
               <h3>Encerramento seguro</h3>
@@ -660,10 +793,10 @@
             <article class="settings-card settings-card--wide">
               <h3>IDE para projetos</h3>
               <p>O Runner abre somente executáveis detectados ou escolhidos localmente, sem comandos livres.</p>
-              <select
+              <app-runner-select
                 [value]="runner.developerTools().selectedIdeId ?? ''"
                 [disabled]="runner.developerToolsLoading()"
-                (change)="selectIde($event)"
+                (valueChange)="selectIde($event)"
               >
                 @if (!runner.developerTools().ideApplications.length) {
                   <option value="">Nenhuma IDE detectada</option>
@@ -671,7 +804,7 @@
                 @for (ide of runner.developerTools().ideApplications; track ide.id) {
                   <option [value]="ide.id">{{ ide.name }}</option>
                 }
-              </select>
+              </app-runner-select>
               <div class="settings-actions">
                 <button class="button" type="button" (click)="browseCustomIde()">Escolher executável…</button>
                 <button class="button" type="button" [disabled]="runner.developerToolsLoading()" (click)="runner.refreshDeveloperTools()">Redetectar</button>
@@ -746,20 +879,82 @@
   (refreshNodeVersions)="runner.refreshNodeVersions()"
 />
 
+@if (flutterLaunchContext(); as context) {
+  <app-flutter-launch-dialog
+    [attr.data-theme]="effectiveTheme()"
+    [open]="true"
+    [project]="context.project"
+    [action]="context.action"
+    [devices]="flutterDevices()"
+    [emulators]="androidEmulators()"
+    [loading]="flutterDevicesLoading()"
+    [emulatorsLoading]="androidEmulatorsLoading()"
+    [starting]="runner.loading() || androidEmulatorStarting()"
+    [emulatorBooting]="androidEmulatorBooting()"
+    [emulatorMessage]="androidEmulatorMessage()"
+    (dismiss)="closeFlutterLaunch()"
+    (refreshDevices)="refreshFlutterDevices(context.catalog.workspace.id, context.project.id, true)"
+    (refreshEmulators)="refreshAndroidEmulators(context.catalog.workspace.id, context.project.id)"
+    (startEmulator)="startAndroidEmulator($event)"
+    (launch)="launchFlutter($event)"
+  />
+}
+
+@if (ngrokDialogContext(); as context) {
+  <app-ngrok-dialog
+    [attr.data-theme]="effectiveTheme()"
+    [open]="true"
+    [project]="context.project"
+    [targetName]="context.targetName"
+    [status]="runner.ngrokStatus()"
+    [domains]="runner.ngrokDomains()"
+    [loading]="runner.ngrokDomainsLoading()"
+    [creating]="ngrokCreating()"
+    [starting]="runner.loading()"
+    [message]="runner.ngrokDomainsMessage()"
+    (dismiss)="closeNgrokDialog()"
+    (refresh)="runner.refreshNgrokDomains()"
+    (createDomain)="createNgrokDomain($event)"
+    (launch)="startNgrokTunnel($event)"
+    (openSettings)="openNgrokSettings()"
+  />
+}
+
+@if (externalServiceDialogOpen()) {
+  <app-external-service-dialog
+    [attr.data-theme]="effectiveTheme()"
+    [open]="true"
+    [workspaceId]="currentWorkspaceId() || ''"
+    [catalog]="runner.externalServicesCatalog()"
+    [loading]="runner.externalServicesLoading()"
+    [submitting]="externalServiceSubmitting()"
+    [message]="runner.error()"
+    (dismiss)="closeExternalServiceDialog()"
+    (refresh)="refreshExternalServices()"
+    (requestLogFile)="chooseExternalLogFile()"
+    (addService)="addExternalService($event)"
+  />
+}
+
 @if (projectDialogContext(); as context) {
   <app-project-settings-dialog
+    [attr.data-theme]="effectiveTheme()"
     [open]="true"
     [project]="context.project"
     [workspace]="context.catalog.workspace"
     [nodeVersions]="runner.nodeVersions()"
     [nodeVersionsLoading]="runner.nodeVersionsLoading()"
+    [flutterDevices]="flutterDevices()"
+    [flutterDevicesLoading]="flutterDevicesLoading()"
     (dismiss)="closeProjectSettings()"
     (saveSettings)="saveProjectSettings($event)"
     (refreshNodeVersions)="runner.refreshNodeVersions()"
+    (refreshFlutterDevices)="refreshFlutterDevices(context.catalog.workspace.id, context.project.id)"
   />
 }
 
 <app-system-info-dialog
+  [attr.data-theme]="effectiveTheme()"
   [open]="systemInfoDialogOpen()"
   [info]="runner.snapshot().systemInfo"
   [nodeVersions]="runner.nodeVersions()"

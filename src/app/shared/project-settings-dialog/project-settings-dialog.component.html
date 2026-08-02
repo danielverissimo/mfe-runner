@@ -55,7 +55,7 @@
         </div>
         <label>
           Comando padrão
-          <select
+          <app-runner-select
             name="defaultCommandId"
             [(ngModel)]="defaultCommandId"
             [disabled]="!project.commands.length"
@@ -66,7 +66,7 @@
             @for (command of project.commands; track command.id) {
               <option [value]="command.id">{{ command.label }}</option>
             }
-          </select>
+          </app-runner-select>
           <small class="field-note">
             O comando foi descoberto estaticamente pelo adaptador
             {{ project.technology }}.
@@ -88,12 +88,12 @@
         </label>
         <label>
           Verificação de saúde
-          <select name="healthCheckType" [(ngModel)]="healthCheckType">
+          <app-runner-select name="healthCheckType" [(ngModel)]="healthCheckType">
             <option value="none">Nenhuma</option>
             <option value="process">Processo ativo</option>
             <option value="tcp">Porta TCP</option>
             <option value="http">Endpoint HTTP</option>
-          </select>
+          </app-runner-select>
         </label>
         @if (healthCheckType === 'tcp' || healthCheckType === 'http') {
           <label>
@@ -137,7 +137,7 @@
             @for (link of project.libraryLinks; track link.libraryId) {
               <label>
                 {{ libraryName(link.libraryId) }}
-                <select
+                <app-runner-select
                   [name]="'libraryLinkScript-' + link.libraryId"
                   [ngModel]="libraryLinkScripts[link.libraryId] || ''"
                   [disabled]="!availableLinkScripts().length"
@@ -149,7 +149,7 @@
                   @for (script of availableLinkScripts(); track script) {
                     <option [value]="script">npm run {{ script }}</option>
                   }
-                </select>
+                </app-runner-select>
                 <small class="field-note">{{ link.message }}</small>
               </label>
             }
@@ -167,11 +167,11 @@
         </div>
         <label>
           Política de runtime
-          <select name="runtimeMode" [(ngModel)]="runtimeMode">
+          <app-runner-select name="runtimeMode" [(ngModel)]="runtimeMode">
             <option value="inherit">Herdar configuração da workspace</option>
             <option value="auto">Detectar automaticamente</option>
             <option value="explicit">Usar instalação específica</option>
-          </select>
+          </app-runner-select>
         </label>
 
         @if (runtimeMode === 'explicit') {
@@ -214,11 +214,11 @@
         @if (project.ecosystem === 'java-maven' || project.ecosystem === 'java-gradle') {
           <label>
             Política da ferramenta de build
-            <select name="toolMode" [(ngModel)]="toolMode">
+            <app-runner-select name="toolMode" [(ngModel)]="toolMode">
               <option value="inherit">Herdar configuração da workspace</option>
               <option value="auto">Wrapper ou instalação detectada</option>
               <option value="explicit">Ignorar wrapper e usar executável específico</option>
-            </select>
+            </app-runner-select>
           </label>
           @if (toolMode === 'explicit') {
             <label>
@@ -231,6 +231,34 @@
               />
             </label>
           }
+        }
+
+        @if (project.ecosystem === 'flutter') {
+          <label>
+            Plataforma Flutter
+            <app-runner-select name="flutterPlatform" [(ngModel)]="flutterPlatform">
+              <option value="web">Web</option>
+              <option value="android">Android</option>
+              <option value="ios">iOS</option>
+            </app-runner-select>
+          </label>
+          <label>
+            Device Flutter
+            <app-runner-select name="flutterDeviceId" [(ngModel)]="flutterDeviceId">
+              <option value="">Padrão da plataforma</option>
+              @for (device of flutterDevices; track device.id) {
+                @if (device.platform === flutterPlatform || device.platform === 'unknown') {
+                  <option [value]="device.id">{{ device.name }} · {{ device.id }}</option>
+                }
+              }
+            </app-runner-select>
+            <small class="field-note">
+              {{ flutterDevicesLoading ? 'Consultando devices…' : 'A seleção é salva neste projeto.' }}
+            </small>
+          </label>
+          <button class="button" type="button" (click)="refreshFlutterDevices.emit()">
+            Atualizar devices
+          </button>
         }
       </section>
 

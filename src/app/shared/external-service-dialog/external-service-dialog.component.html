@@ -1,0 +1,174 @@
+@if (open) {
+  <div class="backdrop" (click)="!busy() && dismiss.emit()" aria-hidden="true"></div>
+  <section
+    #dialog
+    class="dialog"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-busy]="busy()"
+    aria-labelledby="external-service-title"
+    aria-describedby="external-service-description"
+  >
+    <header>
+      <div class="dialog__icon" aria-hidden="true"><app-runner-icon name="link" [size]="20" /></div>
+      <div>
+        <span>Serviço externo</span>
+        <h2 id="external-service-title">Vincular processo ou container</h2>
+        <p id="external-service-description">Monitore um serviço iniciado fora do MFE Runner.</p>
+      </div>
+      <button class="close-button" type="button" aria-label="Fechar" [disabled]="busy()" (click)="dismiss.emit()">×</button>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="Origem do serviço externo">
+      <button type="button" role="tab" [attr.aria-selected]="tab === 'discovered'" [class.active]="tab === 'discovered'" (click)="setTab('discovered')">Descobertos</button>
+      <button type="button" role="tab" [attr.aria-selected]="tab === 'manual'" [class.active]="tab === 'manual'" (click)="setTab('manual')">Adicionar manualmente</button>
+    </div>
+
+    @if (message) {
+      <div class="state state--warning" role="alert">{{ message }}</div>
+    }
+
+    @if (tab === 'discovered') {
+      <section class="content" role="tabpanel">
+        <div class="section-heading">
+          <div>
+            <strong>Listeners e containers elegíveis</strong>
+            <small>Portas de projetos e serviços já vinculados não aparecem nesta lista.</small>
+          </div>
+        </div>
+
+        <div class="candidate-toolbar">
+          <div class="candidate-search" role="search">
+            <app-runner-icon name="search" [size]="15" />
+            <input
+              type="search"
+              placeholder="Filtrar por nome, processo ou porta…"
+              aria-label="Filtrar processos e containers descobertos"
+              [ngModel]="candidateFilter"
+              (ngModelChange)="setCandidateFilter($event)"
+              (keydown.escape)="setCandidateFilter('')"
+              [disabled]="loading"
+            >
+            @if (candidateFilter) {
+              <button
+                class="candidate-search__clear"
+                type="button"
+                title="Limpar filtro"
+                aria-label="Limpar filtro de processos descobertos"
+                (click)="setCandidateFilter('')"
+              >×</button>
+            }
+          </div>
+          <button class="button button--ghost" type="button" [disabled]="busy()" (click)="refresh.emit()">
+            {{ loading ? 'Consultando…' : 'Atualizar' }}
+          </button>
+        </div>
+
+        @if (loading) {
+          <div class="state state--loading" role="status">
+            <span class="spinner" aria-hidden="true"></span> Descobrindo processos e containers…
+          </div>
+        } @else if (!catalog.candidates.length) {
+          <div class="state">Nenhum listener ou container importável foi encontrado.</div>
+        } @else if (!filteredCandidates().length) {
+          <div class="state">Nenhum processo ou container corresponde ao filtro informado.</div>
+        } @else {
+          <div class="candidate-list" role="radiogroup" aria-label="Serviços descobertos">
+            @for (candidate of filteredCandidates(); track candidate.id) {
+              <button
+                class="candidate"
+                type="button"
+                role="radio"
+                [class.selected]="selectedCandidateId === candidate.id"
+                [attr.aria-checked]="selectedCandidateId === candidate.id"
+                (click)="selectCandidate(candidate)"
+              >
+                <span class="candidate__badge">{{ candidate.provider === 'docker' ? 'Docker' : 'Processo' }}</span>
+                <strong>{{ candidate.name }}</strong>
+                <small>{{ candidateDetails(candidate) }}</small>
+              </button>
+            }
+          </div>
+        }
+
+        @if (catalog.processMessage) { <small class="diagnostic">{{ catalog.processMessage }}</small> }
+        @if (!catalog.docker.available) { <small class="diagnostic diagnostic--warning">{{ catalog.docker.message }}</small> }
+
+        @if (selectedCandidate(); as candidate) {
+          <form class="fields" (ngSubmit)="submitDiscovered()">
+            <label>
+              Nome
+              <input name="externalDiscoveredName" [(ngModel)]="discoveredName" maxlength="120" [disabled]="busy()">
+            </label>
+            <label>
+              Esquema
+              <app-runner-select name="externalDiscoveredScheme" [(ngModel)]="discoveredScheme" [disabled]="busy()">
+                <option value="http">HTTP</option>
+                <option value="https">HTTPS</option>
+              </app-runner-select>
+            </label>
+            @if (candidate.provider === 'process') {
+              <div class="log-source">
+                <div>
+                  <strong>Logs do processo</strong>
+                  <small>O console já aberto no IntelliJ não pode ser recuperado. Selecione um arquivo gravado pela aplicação.</small>
+                </div>
+                <div class="log-source__actions">
+                  <button class="button button--ghost" type="button" [disabled]="busy()" (click)="requestLogFile.emit()">Selecionar arquivo…</button>
+                  @if (logFilePath) { <button class="text-button" type="button" (click)="clearLogFile()">Remover</button> }
+                </div>
+                @if (logFilePath) { <code>{{ logFilePath }}</code> }
+              </div>
+            } @else {
+              <div class="log-source"><strong>Logs Docker</strong><small>O Runner acompanhará `docker container logs --follow`.</small></div>
+            }
+            <footer>
+              <button class="button button--ghost" type="button" [disabled]="busy()" (click)="dismiss.emit()">Cancelar</button>
+              <button class="button button--primary" type="submit" [disabled]="busy() || !discoveredName.trim()">{{ submitting ? 'Vinculando…' : 'Vincular serviço' }}</button>
+            </footer>
+          </form>
+        }
+      </section>
+    } @else {
+      <form class="content fields fields--manual" role="tabpanel" (ngSubmit)="submitManual()">
+        <div class="manual-note">
+          Cadastros remotos podem ser monitorados e publicados com ngrok, mas não podem ser encerrados pelo Runner.
+        </div>
+        <label class="field-wide">
+          Nome
+          <input name="externalManualName" [(ngModel)]="manualName" maxlength="120" placeholder="API iniciada no IntelliJ" [disabled]="busy()" autofocus>
+        </label>
+        <label>
+          Esquema
+          <app-runner-select name="externalManualScheme" [(ngModel)]="manualScheme" [disabled]="busy()">
+            <option value="http">HTTP</option>
+            <option value="https">HTTPS</option>
+          </app-runner-select>
+        </label>
+        <label>
+          Host
+          <input name="externalManualHost" [(ngModel)]="manualHost" maxlength="253" placeholder="localhost" [disabled]="busy()">
+        </label>
+        <label>
+          Porta
+          <input name="externalManualPort" [(ngModel)]="manualPort" type="number" min="1" max="65535" inputmode="numeric" [disabled]="busy()">
+        </label>
+        <div class="log-source field-wide">
+          <div>
+            <strong>Fonte de logs opcional</strong>
+            <small>Para aplicações do IntelliJ, configure a aplicação para gravar os logs em arquivo.</small>
+          </div>
+          <div class="log-source__actions">
+            <button class="button button--ghost" type="button" [disabled]="busy()" (click)="requestLogFile.emit()">Selecionar arquivo…</button>
+            @if (logFilePath) { <button class="text-button" type="button" (click)="clearLogFile()">Remover</button> }
+          </div>
+          @if (logFilePath) { <code>{{ logFilePath }}</code> }
+        </div>
+        <footer class="field-wide">
+          <button class="button button--ghost" type="button" [disabled]="busy()" (click)="dismiss.emit()">Cancelar</button>
+          <button class="button button--primary" type="submit" [disabled]="!canSubmitManual()">{{ submitting ? 'Vinculando…' : 'Vincular serviço' }}</button>
+        </footer>
+      </form>
+    }
+  </section>
+}

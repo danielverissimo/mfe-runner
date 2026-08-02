@@ -2,7 +2,7 @@
   <table>
     <thead>
       <tr>
-        <th>Projeto</th>
+        <th>Projeto / serviço</th>
         <th>Porta</th>
         <th>Comando</th>
         <th>Runtime</th>
@@ -12,6 +12,14 @@
       </tr>
     </thead>
     <tbody>
+      @if (projects.length) {
+        <tr class="table-group-row table-group-row--projects">
+          <th colspan="7" scope="rowgroup">
+            <span>Projetos</span>
+            <small>{{ projects.length }}</small>
+          </th>
+        </tr>
+      }
       @for (project of projects; track project.id) {
         @let process = processFor(project.id);
         <tr
@@ -62,12 +70,22 @@
                     <code>{{ project.git.commit }}</code>
                   }
                 </span>
+                @if (process?.ngrok; as tunnel) {
+                  <span
+                    class="ngrok-context"
+                    [attr.data-state]="tunnel.status"
+                    [title]="tunnel.message"
+                  >
+                    <b>ngrok</b>
+                    {{ tunnel.status === 'online' ? tunnel.publicUrl : tunnel.domain }}
+                  </span>
+                }
               </div>
             </div>
           </td>
           <td>
-            @if (project.port) {
-              <code>{{ project.port }}</code>
+            @if (effectivePort(project, process); as port) {
+              <code>{{ port }}</code>
             } @else {
               <span class="muted">—</span>
             }
@@ -76,18 +94,19 @@
             @if (project.orphaned) {
               <code>{{ process?.commandId ?? process?.script }}</code>
             } @else {
-              <select
+              <app-runner-select
                 class="script-select"
+                size="compact"
                 [value]="selectedCommandId(project)"
                 [disabled]="isActive(process?.status)"
-                [attr.aria-label]="'Comando de ' + project.displayName"
-                (change)="setScript(project.id, $event)"
+                [ariaLabel]="'Comando de ' + project.displayName"
+                (valueChange)="setScript(project.id, $event)"
               >
-                @for (command of project.commands; track command.id) {
+                @for (command of commandOptions(project); track command.id) {
                   <option
                     [value]="command.id"
                     [selected]="command.id === selectedCommandId(project)"
-                  >{{ command.label }}</option>
+                  >{{ commandLabel(project, command) }}</option>
                 }
                 @if (!project.commands.length) {
                   @for (script of project.scriptNames; track script) {
@@ -97,7 +116,7 @@
                     >npm run {{ script }}</option>
                   }
                 }
-              </select>
+              </app-runner-select>
             }
           </td>
           <td>
@@ -112,7 +131,9 @@
           <td>
             <app-status-pill [status]="process?.status ?? 'stopped'" />
           </td>
-          <td class="muted">{{ uptime(process) }}</td>
+          <td class="muted uptime-cell" title="Tempo em execução">
+            {{ uptime(process) }}
+          </td>
           <td class="actions-cell">
             <div class="actions">
               @if (!isActive(process?.status)) {
@@ -161,14 +182,51 @@
                 [attr.aria-label]="'Ver logs de ' + project.displayName"
                 (click)="inspectLogs.emit(project.id)"
               ><app-runner-icon name="terminal" [size]="18" /></button>
-              @if (project.port && !project.orphaned) {
+              @if (effectivePort(project, process); as port) {
+                @if (!project.orphaned) {
+                  <button
+                    class="icon-button icon-button--open"
+                    type="button"
+                    title="Abrir endereço"
+                    [attr.aria-label]="'Abrir endereço de ' + project.displayName"
+                    (click)="openAddress.emit(port)"
+                  ><app-runner-icon name="external" [size]="18" /></button>
+                }
+              }
+              @if (process?.ngrok; as tunnel) {
+                @if (tunnel.status === 'online') {
+                  <button
+                    class="icon-button icon-button--ngrok"
+                    type="button"
+                    [title]="'Abrir ' + tunnel.publicUrl"
+                    [attr.aria-label]="'Abrir endereço público de ' + project.displayName"
+                    (click)="openNgrok.emit(project.id)"
+                  ><app-runner-icon name="external" [size]="18" /></button>
+                  <button
+                    class="icon-button icon-button--ngrok"
+                    type="button"
+                    title="Copiar endereço público"
+                    [attr.aria-label]="'Copiar endereço público de ' + project.displayName"
+                    (click)="copyNgrokUrl.emit(tunnel.publicUrl || '')"
+                  ><app-runner-icon name="copy" [size]="18" /></button>
+                }
                 <button
-                  class="icon-button icon-button--open"
+                  class="icon-button icon-button--ngrok-stop"
                   type="button"
-                  title="Abrir endereço"
-                  [attr.aria-label]="'Abrir endereço de ' + project.displayName"
-                  (click)="openAddress.emit(project.port)"
-                ><app-runner-icon name="external" [size]="18" /></button>
+                  [title]="tunnel.status === 'failed' ? 'Remover vínculo ngrok com falha' : 'Encerrar ngrok'"
+                  [attr.aria-label]="'Encerrar ngrok de ' + project.displayName"
+                  [disabled]="busy || tunnel.status === 'stopping'"
+                  (click)="stopNgrok.emit(project.id)"
+                ><app-runner-icon name="stop" [size]="14" /></button>
+              } @else if (canLinkNgrok(process)) {
+                <button
+                  class="icon-button icon-button--ngrok"
+                  type="button"
+                  title="Vincular ngrok"
+                  [attr.aria-label]="'Vincular ngrok a ' + project.displayName"
+                  [disabled]="busy"
+                  (click)="linkNgrok.emit(project.id)"
+                ><span aria-hidden="true">↗</span></button>
               }
               @if (!project.orphaned && project.role === 'library' && project.library) {
                 <button
@@ -262,11 +320,11 @@
                     <button type="button" role="menuitem" (click)="runTool('folder', project)">Abrir pasta</button>
                     <button type="button" role="menuitem" (click)="runTool('terminal', project)">Abrir terminal</button>
                     <button type="button" role="menuitem" (click)="runTool('path', project)">Copiar path</button>
-                    @if (project.port) {
+                    @if (effectivePort(project, process); as port) {
                       <button
                         type="button"
                         role="menuitem"
-                        (click)="copyAddress.emit(project.port); closeTools()"
+                        (click)="copyAddress.emit(port); closeTools()"
                       >Copiar endereço local</button>
                     }
                   </div>
@@ -286,7 +344,94 @@
             </div>
           </td>
         </tr>
-      } @empty {
+      }
+      @if (externalServices.length) {
+        <tr class="table-group-row table-group-row--external">
+          <th colspan="7" scope="rowgroup">
+            <span>Serviços externos</span>
+            <small>{{ externalServices.length }}</small>
+          </th>
+        </tr>
+      }
+      @for (service of externalServices; track service.id) {
+        @let process = processFor(service.id);
+        <tr class="external-row" [attr.data-status]="process?.status ?? 'connecting'">
+          <td>
+            <div class="project">
+              <span class="project__icon project__icon--external">E</span>
+              <div>
+                <strong>{{ service.name }}</strong>
+                <span>
+                  Serviço externo · {{ externalProviderLabel(service) }}
+                  <b class="external-badge">Externo</b>
+                </span>
+                <small class="external-detail" [title]="process?.message || ''">
+                  {{ service.scheme }}://{{ service.host }} · {{ externalLogLabel(service) }}
+                </small>
+                @if (process?.ngrok; as tunnel) {
+                  <span class="ngrok-context" [attr.data-state]="tunnel.status" [title]="tunnel.message">
+                    <b>ngrok</b> {{ tunnel.status === 'online' ? tunnel.publicUrl : tunnel.domain }}
+                  </span>
+                }
+              </div>
+            </div>
+          </td>
+          <td><code>{{ service.port }}</code></td>
+          <td><code class="external-upstream">{{ service.scheme }}://{{ service.host }}</code></td>
+          <td>
+            <div class="node">
+              <strong>{{ externalProviderLabel(service) }}</strong>
+              <span>{{ service.provider === 'docker' ? service.identity.image || service.identity.name || 'container' : service.identity.name || 'manual' }}</span>
+            </div>
+          </td>
+          <td><app-status-pill [status]="process?.status ?? 'connecting'" /></td>
+          <td class="muted uptime-cell" title="Tempo monitorado">{{ uptime(process) }}</td>
+          <td class="actions-cell">
+            <div class="actions">
+              <button class="icon-button icon-button--logs" type="button" title="Ver logs" [attr.aria-label]="'Ver logs de ' + service.name" (click)="inspectLogs.emit(service.id)">
+                <app-runner-icon name="terminal" [size]="18" />
+              </button>
+              <button class="icon-button icon-button--open" type="button" title="Abrir endereço" [attr.aria-label]="'Abrir ' + service.name" (click)="openExternalAddress.emit(service.id)">
+                <app-runner-icon name="external" [size]="18" />
+              </button>
+              <button class="icon-button" type="button" title="Copiar endereço" [attr.aria-label]="'Copiar endereço de ' + service.name" (click)="copyExternalAddress.emit(service)">
+                <app-runner-icon name="copy" [size]="18" />
+              </button>
+              @if (process?.ngrok; as tunnel) {
+                @if (tunnel.status === 'online') {
+                  <button class="icon-button icon-button--ngrok" type="button" [title]="'Abrir ' + tunnel.publicUrl" [attr.aria-label]="'Abrir endereço público de ' + service.name" (click)="openNgrok.emit(service.id)">
+                    <app-runner-icon name="external" [size]="18" />
+                  </button>
+                  <button class="icon-button icon-button--ngrok" type="button" title="Copiar endereço público" [attr.aria-label]="'Copiar endereço público de ' + service.name" (click)="copyNgrokUrl.emit(tunnel.publicUrl || '')">
+                    <app-runner-icon name="copy" [size]="18" />
+                  </button>
+                }
+                <button class="icon-button icon-button--ngrok-stop" type="button" title="Encerrar ngrok" [disabled]="busy || tunnel.status === 'stopping'" (click)="stopNgrok.emit(service.id)">
+                  <app-runner-icon name="stop" [size]="14" />
+                </button>
+              } @else if (canLinkExternalNgrok(process)) {
+                <button class="icon-button icon-button--ngrok" type="button" title="Vincular ngrok" [attr.aria-label]="'Vincular ngrok a ' + service.name" [disabled]="busy" (click)="linkExternalNgrok.emit(service.id)">
+                  <span aria-hidden="true">↗</span>
+                </button>
+              }
+              @if (process?.status === 'identity-mismatch' && service.provider === 'process') {
+                <button class="icon-button icon-button--external" type="button" title="Atualizar identidade do processo" [disabled]="busy" (click)="rebindExternalService.emit(service.id)">
+                  <app-runner-icon name="refresh" [size]="17" />
+                </button>
+              }
+              @if (process?.external?.canTerminate) {
+                <button class="icon-button icon-button--stop" type="button" title="Encerrar serviço externo" [attr.aria-label]="'Encerrar ' + service.name" [disabled]="busy || process?.status === 'offline'" (click)="terminateExternalService.emit(service.id)">
+                  <app-runner-icon name="stop" [size]="14" />
+                </button>
+              }
+              <button class="icon-button icon-button--remove" type="button" title="Desvincular sem encerrar" [attr.aria-label]="'Desvincular ' + service.name + ' sem encerrar'" [disabled]="busy" (click)="removeExternalService.emit(service.id)">
+                <app-runner-icon name="x" [size]="17" />
+              </button>
+            </div>
+          </td>
+        </tr>
+      }
+      @if (!projects.length && !externalServices.length) {
         <tr>
           <td colspan="7" class="empty-cell">
             {{ emptyMessage }}

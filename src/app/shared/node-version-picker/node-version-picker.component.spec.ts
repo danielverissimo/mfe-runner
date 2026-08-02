@@ -32,9 +32,7 @@ describe('NodeVersionPickerComponent', () => {
   it('emits either an installed or manually entered version', () => {
     spyOn(fixture.componentInstance.valueChange, 'emit');
 
-    fixture.componentInstance.selectInstalled({
-      target: { value: '22.12.0' },
-    } as unknown as Event);
+    fixture.componentInstance.selectInstalled('22.12.0');
     fixture.componentInstance.enterManual({
       target: { value: '20.19.0' },
     } as unknown as Event);

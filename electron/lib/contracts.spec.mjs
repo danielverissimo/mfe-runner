@@ -1,13 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  validateAndroidEmulatorRequest,
   validateClipboardWriteRequest,
   validateDiagnosticExportRequest,
   validateDirectoryPickerRequest,
+  validateFlutterTarget,
+  validateExternalServiceConfig,
+  validateExternalServiceCreateRequest,
+  validateExternalServiceRequest,
   validateHealthCheck,
   validateIdePreference,
   validateLibraryLinkRequest,
   validateLocalAddressRequest,
+  validateNgrokDomainCreateRequest,
+  validateNgrokPreference,
+  validateNgrokResourceRequest,
+  validateNgrokTunnelRequest,
   validateNodePolicy,
   validateProcessRequest,
   validateProjectOrderUpdate,
@@ -18,6 +27,129 @@ import {
   validateRuntimePathPickerRequest,
   validateWorkspaceInput,
 } from './contracts.mjs';
+
+test('validates bounded external-service configuration and identifier-only requests', () => {
+  assert.deepEqual(validateExternalServiceCreateRequest({
+    workspaceId: 'workspace',
+    candidateId: 'docker:abc123:4310',
+    name: 'API local',
+    scheme: 'https',
+    host: 'LOCALHOST',
+    port: 4310,
+    executablePath: '/attacker/docker',
+    args: ['container', 'stop', 'abc123'],
+  }), {
+    workspaceId: 'workspace',
+    candidateId: 'docker:abc123:4310',
+    name: 'API local',
+    scheme: 'https',
+    host: 'localhost',
+    port: 4310,
+  });
+  assert.deepEqual(validateExternalServiceConfig({
+    id: 'external-service:abc',
+    name: 'Container API',
+    scheme: 'http',
+    host: 'localhost',
+    port: 8080,
+    provider: 'docker',
+    identity: { containerId: 'container-1', name: 'api', image: 'api:latest' },
+    logSource: { type: 'docker' },
+  }).identity.containerId, 'container-1');
+  assert.deepEqual(validateExternalServiceRequest({
+    workspaceId: 'workspace',
+    serviceId: 'external-service:abc',
+  }), {
+    workspaceId: 'workspace',
+    serviceId: 'external-service:abc',
+  });
+  assert.throws(() => validateExternalServiceCreateRequest({
+    workspaceId: 'workspace',
+    candidateId: 'docker:abc;rm -rf:4310',
+    name: 'API',
+    scheme: 'http',
+    host: 'localhost',
+    port: 4310,
+  }), /Candidato externo inválido/);
+  assert.throws(() => validateExternalServiceRequest({
+    workspaceId: 'workspace',
+    serviceId: 'root/project',
+  }), /Serviço externo inválido/);
+});
+
+test('keeps ngrok IPC payloads identifier-only and bounded', () => {
+  assert.deepEqual(validateNgrokPreference({
+    executablePath: '/opt/homebrew/bin/ngrok',
+    authtoken: 'must-not-pass',
+  }), { executablePath: '/opt/homebrew/bin/ngrok' });
+  assert.deepEqual(validateNgrokDomainCreateRequest({
+    name: 'My-App',
+    suffix: 'NGROK-FREE.DEV',
+    description: 'MFE Runner',
+    apiKey: 'must-not-pass',
+  }), {
+    name: 'my-app',
+    suffix: 'ngrok-free.dev',
+    description: 'MFE Runner',
+  });
+  assert.throws(
+    () => validateNgrokDomainCreateRequest({
+      name: 'app.example.com',
+      suffix: 'ngrok.app',
+    }),
+    /somente letras, números ou hífen/,
+  );
+  assert.throws(
+    () => validateNgrokDomainCreateRequest({
+      name: 'app',
+      suffix: 'attacker.example',
+    }),
+    /não suportada/,
+  );
+  assert.deepEqual(validateNgrokTunnelRequest({
+    workspaceId: 'workspace',
+    projectId: 'project',
+    domainId: 'rd_123',
+    domain: 'app.example.com',
+    executablePath: '/attacker/ngrok',
+    args: ['tcp', '22'],
+    port: 22,
+  }), {
+    workspaceId: 'workspace',
+    projectId: 'project',
+    domainId: 'rd_123',
+    domain: 'app.example.com',
+  });
+  assert.deepEqual(validateNgrokResourceRequest({ resource: 'apiKey' }), {
+    resource: 'apiKey',
+  });
+  assert.throws(
+    () => validateNgrokResourceRequest({ resource: 'https://attacker.invalid' }),
+    /não suportado/,
+  );
+});
+
+test('accepts only a bounded Android emulator id with project authority', () => {
+  assert.deepEqual(validateAndroidEmulatorRequest({
+    workspaceId: 'workspace',
+    projectId: 'project',
+    emulatorId: 'Pixel_9a',
+    executable: '/attacker/emulator',
+    args: ['-wipe-data'],
+  }), {
+    workspaceId: 'workspace',
+    projectId: 'project',
+    emulatorId: 'Pixel_9a',
+  });
+  assert.throws(
+    () => validateAndroidEmulatorRequest({
+      workspaceId: 'workspace',
+      projectId: 'project',
+      emulatorId: '',
+    }),
+    /Android Virtual Device inválido/,
+  );
+});
 
 test('runtime selectors accept only allowlisted ecosystems and components', () => {
   assert.deepEqual(validateRuntimeComponentRequest({
@@ -50,6 +182,53 @@ test('runtime selectors accept only allowlisted ecosystems and components', () =
       component: 'command',
     }),
     /Componente não suportado/,
+  );
+});
+
+test('validates persisted Flutter targets without accepting arbitrary platforms', () => {
+  assert.deepEqual(validateFlutterTarget({
+    platform: 'ios',
+    deviceId: 'simulator',
+    deviceName: 'iPhone',
+  }), {
+    platform: 'ios',
+    deviceId: 'simulator',
+    deviceName: 'iPhone',
+  });
+  assert.throws(
+    () => validateFlutterTarget({ platform: 'desktop', deviceId: 'x' }),
+    /Plataforma Flutter não suportada/,
+  );
+});
+
+test('accepts only a structured Flutter target in process requests', () => {
+  assert.deepEqual(validateProcessRequest({
+    workspaceId: 'workspace',
+    projectId: 'project',
+    commandId: 'flutter:run:ios',
+    flutterTarget: {
+      platform: 'ios',
+      deviceId: 'simulator-1',
+      deviceName: 'iPhone',
+      args: ['--dart-define=SECRET=value'],
+    },
+  }), {
+    workspaceId: 'workspace',
+    projectId: 'project',
+    commandId: 'flutter:run:ios',
+    flutterTarget: {
+      platform: 'ios',
+      deviceId: 'simulator-1',
+      deviceName: 'iPhone',
+    },
+  });
+  assert.throws(
+    () => validateProcessRequest({
+      workspaceId: 'workspace',
+      projectId: 'project',
+      flutterTarget: { platform: 'macos' },
+    }),
+    /Plataforma Flutter não suportada/,
   );
 });
 

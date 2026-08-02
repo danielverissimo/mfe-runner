@@ -179,7 +179,7 @@
                     </div>
                     <label>
                       Tipo
-                      <select
+                      <app-runner-select
                         [name]="'kind-' + sourceIndex + '-' + projectIndex"
                         [ngModel]="project.kind"
                         (ngModelChange)="setKind(sourceIndex, projectIndex, $event)"
@@ -187,7 +187,7 @@
                         <option value="" disabled>Escolha…</option>
                         <option value="project">Projeto</option>
                         <option value="library">Biblioteca</option>
-                      </select>
+                      </app-runner-select>
                     </label>
                     @if (project.kind === 'library') {
                       <label class="link-toggle">
@@ -207,11 +207,11 @@
                           </label>
                           <label>
                             Script de desenvolvimento
-                            <select [name]="'dev-' + sourceIndex + '-' + projectIndex" [(ngModel)]="project.localLink.developmentScript">
+                            <app-runner-select [name]="'dev-' + sourceIndex + '-' + projectIndex" [(ngModel)]="project.localLink.developmentScript">
                               @for (script of project.scripts; track script) {
                                 <option [value]="script">npm run {{ script }}</option>
                               }
-                            </select>
+                            </app-runner-select>
                           </label>
                           <label>
                             Artefato relativo
@@ -253,12 +253,12 @@
       <div class="field-row">
         <label>
           Ambiente
-          <select name="environment" [(ngModel)]="environment">
+          <app-runner-select name="environment" [(ngModel)]="environment">
             <option value="local">Local</option>
             <option value="des">Desenvolvimento</option>
             <option value="hom">Homologação</option>
             <option value="prod">Produção</option>
-          </select>
+          </app-runner-select>
         </label>
       </div>
       @if (detectedEcosystems().length) {
@@ -277,7 +277,7 @@
               </summary>
               <label>
                 Runtime
-                <select
+                <app-runner-select
                   [name]="'workspace-runtime-' + ecosystem"
                   [ngModel]="policyMode(ecosystem, 'runtime')"
                   (ngModelChange)="setPolicyMode(ecosystem, 'runtime', $event)"
@@ -285,7 +285,7 @@
                   <option value="inherit">Herdar configuração global</option>
                   <option value="auto">Detectar automaticamente por projeto</option>
                   <option value="explicit">Usar instalação específica</option>
-                </select>
+                </app-runner-select>
               </label>
               @if (policyMode(ecosystem, 'runtime') === 'explicit') {
                 @if (ecosystem === 'node') {
@@ -311,7 +311,7 @@
               @if (ecosystem === 'java-maven' || ecosystem === 'java-gradle') {
                 <label>
                   {{ ecosystem === 'java-maven' ? 'Maven' : 'Gradle' }}
-                  <select
+                  <app-runner-select
                     [name]="'workspace-tool-' + ecosystem"
                     [ngModel]="policyMode(ecosystem, 'tool')"
                     (ngModelChange)="setPolicyMode(ecosystem, 'tool', $event)"
@@ -319,7 +319,7 @@
                     <option value="inherit">Herdar configuração global</option>
                     <option value="auto">Wrapper ou instalação detectada</option>
                     <option value="explicit">Executável específico</option>
-                  </select>
+                  </app-runner-select>
                 </label>
                 @if (policyMode(ecosystem, 'tool') === 'explicit') {
                   <label>

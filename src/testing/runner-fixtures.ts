@@ -166,6 +166,7 @@ export const snapshotFixture: RunnerSnapshot = {
       stopProcessesOnExit: true,
       logLimit: 1500,
       ide: null,
+      ngrok: { executablePath: null },
     },
     workspaces: [{
       id: 'workspace-1',
@@ -260,6 +261,25 @@ export function createBridgeFixture(
     'getSnapshot',
     'listNodeVersions',
     'listRuntimeInstallations',
+    'listFlutterDevices',
+    'listAndroidEmulators',
+    'launchAndroidEmulator',
+    'getNgrokStatus',
+    'listNgrokDomains',
+    'createNgrokDomain',
+    'startNgrokTunnel',
+    'stopNgrokTunnel',
+    'openNgrokTunnel',
+    'openNgrokResource',
+    'openNgrokConfig',
+    'discoverExternalServices',
+    'chooseExternalLogFile',
+    'addExternalService',
+    'removeExternalService',
+    'terminateExternalService',
+    'rebindExternalService',
+    'openExternalServiceAddress',
+    'chooseNgrokExecutable',
     'chooseRuntimePath',
     'openRuntimeDownload',
     'chooseProjectDirectory',
@@ -318,6 +338,63 @@ export function createBridgeFixture(
       source: 'installed',
     }],
   }));
+  bridge.listFlutterDevices.and.resolveTo({
+    devices: [],
+    message: 'Nenhum device Flutter detectado.',
+  });
+  bridge.listAndroidEmulators.and.resolveTo({
+    emulators: [],
+    message: 'Nenhum Android Virtual Device configurado foi encontrado.',
+  });
+  bridge.launchAndroidEmulator.and.callFake(async ({ emulatorId }) => ({
+    started: true,
+    emulatorId,
+  }));
+  bridge.getNgrokStatus.and.resolveTo({
+    installed: true,
+    available: true,
+    executablePath: '/opt/homebrew/bin/ngrok',
+    source: 'homebrew',
+    version: '3.22.1',
+    configValid: true,
+    configPath: '/Users/dev/Library/Application Support/ngrok/ngrok.yml',
+    message: 'ngrok e arquivo de configuração disponíveis.',
+  });
+  bridge.listNgrokDomains.and.resolveTo({
+    domains: [{
+      id: 'rd_123',
+      domain: 'app.example.com',
+      description: 'App',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      cnameTarget: null,
+      certificateStatus: 'ready',
+      dnsStatus: 'ready',
+      wildcard: false,
+      compatible: true,
+    }],
+    message: '1 domínio encontrado.',
+  });
+  bridge.createNgrokDomain.and.resolveTo({ canceled: true, domain: null });
+  bridge.startNgrokTunnel.and.resolveTo(snapshot);
+  bridge.stopNgrokTunnel.and.resolveTo(snapshot);
+  bridge.openNgrokTunnel.and.resolveTo();
+  bridge.openNgrokResource.and.resolveTo();
+  bridge.openNgrokConfig.and.resolveTo();
+  bridge.discoverExternalServices.and.resolveTo({
+    candidates: [],
+    docker: { available: false, message: 'Docker indisponível.' },
+    processMessage: null,
+  });
+  bridge.chooseExternalLogFile.and.resolveTo({
+    canceled: true,
+    filePath: null,
+  });
+  bridge.addExternalService.and.resolveTo(snapshot);
+  bridge.removeExternalService.and.resolveTo(snapshot);
+  bridge.terminateExternalService.and.resolveTo(snapshot);
+  bridge.rebindExternalService.and.resolveTo(snapshot);
+  bridge.openExternalServiceAddress.and.resolveTo();
+  bridge.chooseNgrokExecutable.and.resolveTo('/opt/homebrew/bin/ngrok');
   bridge.chooseRuntimePath.and.resolveTo('/opt/runtime/bin/tool');
   bridge.openRuntimeDownload.and.resolveTo();
   bridge.chooseProjectDirectory.and.resolveTo('/workspace/mfes');

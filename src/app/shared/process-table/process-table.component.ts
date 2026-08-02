@@ -8,13 +8,16 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
+  CommandProfile,
   DiscoveredProject,
+  ExternalServiceConfig,
   ManagedProcess,
   ProcessRequest,
 } from '../../core/models/runner.models';
 import { StatusPillComponent } from '../status-pill/status-pill.component';
 import { ActionTooltipDirective } from '../action-tooltip/action-tooltip.directive';
 import { RunnerIconComponent } from '../runner-icon/runner-icon.component';
+import { RunnerSelectComponent } from '../runner-select/runner-select.component';
 
 @Component({
   selector: 'app-process-table',
@@ -24,6 +27,7 @@ import { RunnerIconComponent } from '../runner-icon/runner-icon.component';
     StatusPillComponent,
     ActionTooltipDirective,
     RunnerIconComponent,
+    RunnerSelectComponent,
   ],
   templateUrl: './process-table.component.html',
   styleUrl: './process-table.component.scss',
@@ -32,6 +36,7 @@ import { RunnerIconComponent } from '../runner-icon/runner-icon.component';
 export class ProcessTableComponent {
   @Input({ required: true }) workspaceId = '';
   @Input({ required: true }) projects: DiscoveredProject[] = [];
+  @Input() externalServices: ExternalServiceConfig[] = [];
   @Input() processes: ManagedProcess[] = [];
   @Input() emptyMessage =
     'Nenhum projeto executável foi descoberto nestes paths.';
@@ -54,6 +59,16 @@ export class ProcessTableComponent {
   @Output() openTerminal = new EventEmitter<string>();
   @Output() copyPath = new EventEmitter<string>();
   @Output() copyAddress = new EventEmitter<number>();
+  @Output() linkNgrok = new EventEmitter<string>();
+  @Output() stopNgrok = new EventEmitter<string>();
+  @Output() openNgrok = new EventEmitter<string>();
+  @Output() copyNgrokUrl = new EventEmitter<string>();
+  @Output() openExternalAddress = new EventEmitter<string>();
+  @Output() copyExternalAddress = new EventEmitter<ExternalServiceConfig>();
+  @Output() removeExternalService = new EventEmitter<string>();
+  @Output() terminateExternalService = new EventEmitter<string>();
+  @Output() rebindExternalService = new EventEmitter<string>();
+  @Output() linkExternalNgrok = new EventEmitter<string>();
   @Output() linkLibrary = new EventEmitter<{
     libraryId: string;
     projectId?: string;
@@ -112,21 +127,40 @@ export class ProcessTableComponent {
     const selected = this.selectedCommands.get(
       this.scriptSelectionKey(project.id),
     );
-    return project.commands.find((command) => command.id === selected) ??
+    const command = project.commands.find((item) => item.id === selected) ??
       project.commands.find(
-        (command) => command.id === project.defaultCommandId,
+        (item) => item.id === project.defaultCommandId,
       ) ??
       project.commands[0];
+    if (project.ecosystem !== 'flutter' || !command) return command;
+    return this.commandOptions(project).find(
+      (item) => item.category === command.category,
+    ) ?? command;
+  }
+
+  commandOptions(project: DiscoveredProject): CommandProfile[] {
+    if (project.ecosystem !== 'flutter') return project.commands;
+    return (['run', 'test', 'build'] as const).flatMap((category) => {
+      const command = project.commands.find((item) => item.category === category);
+      return command ? [command] : [];
+    });
+  }
+
+  commandLabel(project: DiscoveredProject, command: CommandProfile): string {
+    if (project.ecosystem !== 'flutter') return command.label;
+    return `Flutter · ${command.category === 'run'
+      ? 'Run'
+      : command.category === 'test' ? 'Test' : 'Build'}`;
   }
 
   selectedCommandId(project: DiscoveredProject): string {
     return this.selectedCommand(project)?.id ?? this.selectedScript(project);
   }
 
-  setScript(projectId: string, event: Event): void {
+  setScript(projectId: string, value: string): void {
     this.selectedCommands.set(
       this.scriptSelectionKey(projectId),
-      (event.target as HTMLSelectElement).value,
+      value,
     );
   }
 
@@ -159,8 +193,37 @@ export class ProcessTableComponent {
 
   isActive(status?: string): boolean {
     return !!status &&
-      ['starting', 'linking', 'running', 'healthy', 'degraded', 'stopping']
+      ['starting', 'linking', 'running', 'healthy', 'degraded', 'stopping',
+        'connecting', 'online', 'identity-mismatch']
         .includes(status);
+  }
+
+  canLinkNgrok(process?: ManagedProcess): boolean {
+    return !!process?.port &&
+      ['running', 'healthy', 'degraded'].includes(process.status) &&
+      !process.ngrok;
+  }
+
+  canLinkExternalNgrok(process?: ManagedProcess): boolean {
+    return !!process?.port && process.status === 'online' && !process.ngrok;
+  }
+
+  externalProviderLabel(service: ExternalServiceConfig): string {
+    return service.provider === 'docker' ? 'Docker' : 'Processo';
+  }
+
+  externalLogLabel(service: ExternalServiceConfig): string {
+    if (service.logSource.type === 'docker') return 'Logs Docker';
+    if (service.logSource.type === 'file') return 'Arquivo de log';
+    return 'Sem fonte de log';
+  }
+
+  effectivePort(
+    project: DiscoveredProject,
+    process?: ManagedProcess,
+  ): number | null {
+    if (process?.port && this.isActive(process.status)) return process.port;
+    return project.port;
   }
 
   roleLabel(role: string): string {

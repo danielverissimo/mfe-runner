@@ -1,9 +1,19 @@
 # Multi-ecosystem support plan
 
+> Cross-ecosystem service note: ngrok is implemented as a supervised HTTP
+> sidecar and is intentionally independent from project adapters. It can be
+> attached only after a supported ecosystem has produced an active managed
+> process with a known port. Account access remains explicit and credentials
+> remain in ngrok's official configuration.
+>
+> External HTTP/HTTPS services use the same generic supervisor model as
+> non-owned records. They do not participate in ecosystem runtime resolution
+> or global project lifecycle actions.
+
 ## Goal
 
 Generalize MFE Runner so a workspace can discover and supervise Node.js,
-Java/Maven, Java/Gradle, .NET, Python, Rust, and Go projects without changing
+Java/Maven, Java/Gradle, .NET, Python, Rust, Go, and Flutter projects without changing
 their source files or installing runtimes automatically.
 
 Node.js remains stable. Every newly introduced ecosystem starts as Beta.
@@ -80,6 +90,8 @@ implementation and cross-platform validation.
   environments, and known framework entrypoints.
 - Rust: Cargo packages/workspaces and rustup toolchain files.
 - Go: modules/workspaces and `go` commands with `GOTOOLCHAIN=path`.
+- Flutter: `pubspec.yaml`, Flutter/FVM resolution, Web/Android/iOS run/test/build,
+  and explicit device discovery.
 
 ## Parsing and safety
 
@@ -113,6 +125,8 @@ implementation and cross-platform validation.
 - [x] Implement Java/Gradle.
 - [x] Adapt Angular runtime, command, diagnostics, and Beta UI.
 - [x] Add .NET, Python, Rust, and Go Beta adapters.
+- [x] Add Flutter Beta adapter and FVM/device support.
+- [x] Add the cross-platform Android AVD fallback and detached emulator launch.
 - [x] Update translations and public documentation.
 - [x] Run Electron tests.
 - [x] Run Angular tests.

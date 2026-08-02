@@ -187,6 +187,29 @@ export class SupervisorServer extends EventEmitter {
           payload.projectId,
           payload.message,
         );
+      case 'startNgrok':
+        return this.supervisor.startNgrok(
+          payload.workspaceId,
+          payload.projectId,
+          payload.launchSpecification,
+        );
+      case 'stopNgrok':
+        return this.supervisor.stopNgrok(
+          payload.workspaceId,
+          payload.projectId,
+        );
+      case 'attachExternal':
+        return this.supervisor.attachExternal(payload);
+      case 'detachExternal':
+        return this.supervisor.detachExternal(
+          payload.workspaceId,
+          payload.serviceId,
+        );
+      case 'reconcileExternal':
+        return this.supervisor.reconcileExternal(
+          payload.workspace,
+          payload.services,
+        );
     }
   }
 

@@ -104,6 +104,20 @@ describe('WorkspaceDialogComponent', () => {
     delete document.documentElement.dataset['theme'];
   });
 
+  it('uses the shared select with the inset chevron indicator', () => {
+    const select = fixture.nativeElement.querySelector(
+      'app-runner-select[name="environment"]',
+    ) as HTMLElement;
+    const indicator = select.querySelector(
+      '.runner-select__indicator',
+    ) as HTMLElement;
+
+    expect(select).not.toBeNull();
+    expect(getComputedStyle(indicator).width).toBe('32px');
+    expect(getComputedStyle(indicator).height).toBe('26px');
+    expect(getComputedStyle(indicator).right).toBe('14px');
+  });
+
   it('shows live scan progress while a path is being inspected', () => {
     const index = fixture.componentInstance.beginInspection('/workspace/root');
     fixture.componentInstance.setInspectionProgress(index, {

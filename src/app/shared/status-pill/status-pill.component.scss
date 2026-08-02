@@ -21,7 +21,8 @@
 }
 
 .status--healthy,
-.status--running {
+.status--running,
+.status--online {
   color: var(--runner-success);
   border-color: rgb(40 211 155 / 22%);
   background: rgb(40 211 155 / 7%);
@@ -29,7 +30,8 @@
 
 .status--starting,
 .status--linking,
-.status--stopping {
+.status--stopping,
+.status--connecting {
   color: var(--runner-info);
   border-color: rgb(72 169 255 / 22%);
   background: rgb(72 169 255 / 7%);
@@ -42,8 +44,13 @@
 }
 
 .status--failed,
-.status--conflict {
+.status--conflict,
+.status--identity-mismatch {
   color: var(--runner-danger);
   border-color: rgb(255 97 120 / 22%);
   background: rgb(255 97 120 / 7%);
+}
+
+.status--offline {
+  color: var(--runner-text-muted);
 }

@@ -45,8 +45,8 @@ async function waitForFile(filePath, timeout = 4000) {
   throw new Error(`Timeout aguardando arquivo: ${filePath}`);
 }
 
-test('retires protocol v4 only after requesting a graceful stopAll', async () => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-client-v4-'));
+test('retires protocol v7 only after requesting a graceful stopAll', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'mfe-client-v7-'));
   const paths = supervisorPaths(directory);
   const token = await ensureSupervisorToken(directory);
   const readyPath = path.join(directory, 'legacy-ready');
@@ -82,7 +82,7 @@ test('retires protocol v4 only after requesting a graceful stopAll', async () =>
           if (!authenticated) {
             if (
               frame.type !== 'handshake' ||
-              frame.protocolVersion !== 4 ||
+              frame.protocolVersion !== 7 ||
               frame.token !== token
             ) {
               socket.end(JSON.stringify({
@@ -97,7 +97,7 @@ test('retires protocol v4 only after requesting a graceful stopAll', async () =>
             authenticated = true;
             socket.write(JSON.stringify({
               type: 'handshake',
-              protocolVersion: 4,
+              protocolVersion: 7,
               processes: [],
             }) + '\\n');
             continue;

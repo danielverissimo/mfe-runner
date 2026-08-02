@@ -7,7 +7,8 @@ export type Ecosystem =
   | 'dotnet'
   | 'python'
   | 'rust'
-  | 'go';
+  | 'go'
+  | 'flutter';
 export type SupportLevel = 'stable' | 'beta';
 export type CompatibilityStatus =
   | 'ready'
@@ -17,6 +18,17 @@ export type CompatibilityStatus =
   | 'unknown';
 export type RunnerEnvironment = 'local' | 'des' | 'hom' | 'prod';
 export type AppTheme = 'system' | 'light' | 'dark';
+export const NGROK_MANAGED_DOMAIN_SUFFIXES = [
+  'ngrok.app',
+  'ngrok.dev',
+  'ngrok.pizza',
+  'ngrok.pro',
+  'ngrok-free.app',
+  'ngrok-free.dev',
+  'ngrok.io',
+] as const;
+export type NgrokManagedDomainSuffix =
+  (typeof NGROK_MANAGED_DOMAIN_SUFFIXES)[number];
 export type ProjectKind = 'project' | 'library';
 export type ProjectSourceType = 'project' | 'root' | 'monorepo';
 export type ProjectCapability = 'angular' | 'host' | 'mfe';
@@ -35,7 +47,11 @@ export type ProcessStatus =
   | 'degraded'
   | 'stopping'
   | 'failed'
-  | 'conflict';
+  | 'conflict'
+  | 'connecting'
+  | 'online'
+  | 'offline'
+  | 'identity-mismatch';
 
 export interface NodePolicy {
   mode: NodePolicyMode;
@@ -86,6 +102,36 @@ export interface CommandProfile {
   longRunning: boolean;
   task: string;
   args: string[];
+  flutterTarget?: FlutterTarget;
+}
+
+export type FlutterTarget =
+  | 'web'
+  | 'android'
+  | 'ios'
+  | 'test'
+  | 'build-web'
+  | 'build-android'
+  | 'build-ios';
+
+export interface FlutterProjectTarget {
+  platform: 'web' | 'android' | 'ios';
+  deviceId?: string;
+  deviceName?: string;
+}
+
+export interface FlutterDevice {
+  id: string;
+  name: string;
+  platform: 'web' | 'android' | 'ios' | 'unknown';
+  available: boolean;
+  emulator: boolean;
+  category?: string;
+}
+
+export interface AndroidEmulator {
+  id: string;
+  name: string;
 }
 
 export interface NodeVersionCatalog {
@@ -117,6 +163,46 @@ export interface RunnerSettings {
   stopProcessesOnExit: boolean;
   logLimit: number;
   ide: IdePreference | null;
+  ngrok: NgrokPreference;
+}
+
+export interface NgrokPreference {
+  executablePath: string | null;
+}
+
+export interface NgrokStatus {
+  installed: boolean;
+  available: boolean;
+  executablePath: string | null;
+  source: string | null;
+  version: string | null;
+  configValid: boolean;
+  configPath: string | null;
+  message: string;
+}
+
+export interface NgrokDomain {
+  id: string;
+  domain: string;
+  description: string;
+  createdAt: string | null;
+  cnameTarget: string | null;
+  certificateStatus: string | null;
+  dnsStatus: string | null;
+  wildcard: boolean;
+  compatible: boolean;
+}
+
+export interface NgrokTunnelState {
+  status: 'starting' | 'online' | 'stopping' | 'failed';
+  domainId: string;
+  domain: string;
+  publicUrl: string | null;
+  pid: number | null;
+  exitCode: number | null;
+  startedAt: string | null;
+  stoppedAt: string | null;
+  message: string;
 }
 
 export interface IdePreference {
@@ -147,6 +233,7 @@ export interface ProjectOverride {
   libraryLinkScripts?: Record<string, string>;
   startupOrder?: number;
   healthCheck?: ProjectHealthCheck;
+  flutterTarget?: FlutterProjectTarget;
 }
 
 export interface ProjectHealthCheck {
@@ -241,6 +328,58 @@ export interface WorkspaceReview {
   }>;
 }
 
+export type ExternalServiceProvider = 'process' | 'docker';
+export type ExternalServiceScheme = 'http' | 'https';
+
+export interface ExternalServiceConfig {
+  id: string;
+  name: string;
+  scheme: ExternalServiceScheme;
+  host: string;
+  port: number;
+  provider: ExternalServiceProvider;
+  identity: {
+    pid?: number;
+    containerId?: string;
+    name?: string;
+    image?: string;
+  };
+  logSource:
+    | { type: 'none' }
+    | { type: 'file'; filePath: string }
+    | { type: 'docker' };
+}
+
+export interface ExternalServiceCandidate {
+  id: string;
+  provider: ExternalServiceProvider;
+  name: string;
+  host: string;
+  port: number;
+  pid?: number | null;
+  owner?: string;
+  containerId?: string;
+  image?: string;
+  canTerminate: boolean;
+  ports: Array<{ host: string; port: number; containerPort?: number }>;
+}
+
+export interface ExternalServiceCatalog {
+  candidates: ExternalServiceCandidate[];
+  docker: { available: boolean; message: string };
+  processMessage: string | null;
+}
+
+export interface ExternalServiceCreateInput {
+  workspaceId: string;
+  name: string;
+  scheme: ExternalServiceScheme;
+  host: string;
+  port: number;
+  candidateId?: string;
+  logFilePath?: string;
+}
+
 export interface WorkspaceConfig {
   id: string;
   name: string;
@@ -251,6 +390,7 @@ export interface WorkspaceConfig {
   projectOverrides: Record<string, ProjectOverride>;
   projectOrder?: string[];
   excludedProjectIds: string[];
+  externalServices?: ExternalServiceConfig[];
 }
 
 export interface RunnerConfig {
@@ -312,6 +452,7 @@ export interface DiscoveredProject {
   node: NodeRuntime;
   runtime: RuntimeResolution;
   runtimeRequirements: Record<string, unknown>;
+  flutterTarget?: FlutterProjectTarget;
   git: GitContext;
   library?: LibraryMetadata;
   libraryLinks: LibraryLinkStatus[];
@@ -416,6 +557,7 @@ export interface ManagedProcess {
   workspaceId: string;
   projectId: string;
   projectName: string;
+  source?: 'managed' | 'external';
   script: string;
   commandId?: string;
   status: ProcessStatus;
@@ -426,6 +568,15 @@ export interface ManagedProcess {
   exitCode: number | null;
   message: string;
   logs: LogEntry[];
+  external?: {
+    scheme: ExternalServiceScheme;
+    host: string;
+    provider: ExternalServiceProvider;
+    identity: ExternalServiceConfig['identity'];
+    logSource: ExternalServiceConfig['logSource'];
+    canTerminate: boolean;
+  } | null;
+  ngrok: NgrokTunnelState | null;
 }
 
 export interface SystemInfo {
@@ -473,6 +624,7 @@ export interface ProcessRequest {
   projectId: string;
   script?: string;
   commandId?: string;
+  flutterTarget?: FlutterProjectTarget;
 }
 
 export interface LibraryLinkRequest {
@@ -579,7 +731,73 @@ export interface RunnerBridge {
     libraryLinkScripts?: Record<string, string>;
     startupOrder?: number;
     healthCheck?: ProjectHealthCheck;
+    flutterTarget?: FlutterProjectTarget | null;
   }): Promise<RunnerSnapshot>;
+  listFlutterDevices(input: {
+    workspaceId: string;
+    projectId: string;
+  }): Promise<{ devices: FlutterDevice[]; message?: string }>;
+  listAndroidEmulators(input: {
+    workspaceId: string;
+    projectId: string;
+  }): Promise<{ emulators: AndroidEmulator[]; message?: string }>;
+  launchAndroidEmulator(input: {
+    workspaceId: string;
+    projectId: string;
+    emulatorId: string;
+  }): Promise<{ started: boolean; emulatorId: string }>;
+  getNgrokStatus(): Promise<NgrokStatus>;
+  listNgrokDomains(): Promise<{ domains: NgrokDomain[]; message?: string }>;
+  createNgrokDomain(input: {
+    name: string;
+    suffix: NgrokManagedDomainSuffix;
+    description?: string;
+  }): Promise<{ canceled: boolean; domain: NgrokDomain | null }>;
+  startNgrokTunnel(input: {
+    workspaceId: string;
+    projectId: string;
+    domainId: string;
+    domain: string;
+  }): Promise<RunnerSnapshot>;
+  stopNgrokTunnel(input: {
+    workspaceId: string;
+    projectId: string;
+  }): Promise<RunnerSnapshot>;
+  openNgrokTunnel(input: {
+    workspaceId: string;
+    projectId: string;
+  }): Promise<void>;
+  openNgrokResource(input: {
+    resource: 'install' | 'authtoken' | 'apiKey' | 'domains';
+  }): Promise<void>;
+  openNgrokConfig(): Promise<void>;
+  chooseNgrokExecutable(input?: {
+    initialPath?: string;
+  }): Promise<string | null>;
+  discoverExternalServices(input: {
+    workspaceId: string;
+  }): Promise<ExternalServiceCatalog>;
+  chooseExternalLogFile(): Promise<{
+    canceled: boolean;
+    filePath: string | null;
+  }>;
+  addExternalService(input: ExternalServiceCreateInput): Promise<RunnerSnapshot>;
+  removeExternalService(input: {
+    workspaceId: string;
+    serviceId: string;
+  }): Promise<RunnerSnapshot>;
+  terminateExternalService(input: {
+    workspaceId: string;
+    serviceId: string;
+  }): Promise<RunnerSnapshot>;
+  rebindExternalService(input: {
+    workspaceId: string;
+    serviceId: string;
+  }): Promise<RunnerSnapshot>;
+  openExternalServiceAddress(input: {
+    workspaceId: string;
+    serviceId: string;
+  }): Promise<void>;
   updateProjectOrder(input: {
     workspaceId: string;
     projectIds: string[];

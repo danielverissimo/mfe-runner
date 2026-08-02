@@ -83,6 +83,7 @@ export function createLaunchSpecification({
     MFE_RUNNER_ENVIRONMENT: workspace.environment,
   };
   let invocation;
+  let portStrategy;
   switch (ecosystem) {
     case 'node':
       invocation = windowsNodeInvocation(
@@ -118,6 +119,36 @@ export function createLaunchSpecification({
         args: [profile.task, ...profile.args].filter(Boolean),
       };
       break;
+    case 'flutter': {
+      const target = profile.flutterTarget;
+      if (target === 'test') {
+        const selectedPlatform = project.flutterTarget?.platform;
+        const deviceId = project.flutterTarget?.deviceId ??
+          (selectedPlatform === 'web' ? 'chrome' : undefined);
+        invocation = {
+          executable: project.runtime.components?.runtime?.path,
+          args: ['test', ...(deviceId ? ['-d', deviceId] : [])],
+        };
+      } else if (target === 'build-web' || target === 'build-android' || target === 'build-ios') {
+        invocation = {
+          executable: project.runtime.components?.runtime?.path,
+          args: ['build', target === 'build-android' ? 'apk' : target.replace('build-', '')],
+        };
+      } else {
+        if (!['web', 'android', 'ios'].includes(target)) {
+          throw new Error(`Alvo Flutter inválido para ${project.name}.`);
+        }
+        const selectedPlatform = project.flutterTarget?.platform ?? target;
+        const deviceId = project.flutterTarget?.deviceId ??
+          (selectedPlatform === 'web' ? 'chrome' : undefined);
+        invocation = {
+          executable: project.runtime.components?.runtime?.path,
+          args: ['run', '-d', deviceId ?? selectedPlatform],
+        };
+        if (selectedPlatform === 'web') portStrategy = 'flutter-web';
+      }
+      break;
+    }
     default:
       throw new Error(`Ecossistema não suportado: ${ecosystem}.`);
   }
@@ -136,6 +167,7 @@ export function createLaunchSpecification({
       type: project.port ? 'tcp' : 'process',
       ...(project.port ? { port: project.port } : {}),
     },
+    ...(portStrategy ? { portStrategy } : {}),
     longRunning: profile.longRunning,
   };
 }
