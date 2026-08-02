@@ -2,7 +2,7 @@
   "name": "mfe-runner",
   "productName": "MFE Runner",
   "desktopName": "mfe-runner",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "private": true,
   "description": "Desktop control center for local applications, projects, libraries, processes, and logs",
   "homepage": "https://mferunner.com/",
