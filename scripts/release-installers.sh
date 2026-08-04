@@ -6,6 +6,12 @@ if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
   exit 2
 fi
 
+if ! command -v rpmbuild >/dev/null 2>&1; then
+  echo "rpmbuild não encontrado; ele é obrigatório para gerar os pacotes RPM do Fedora." >&2
+  echo "No macOS, instale o pré-requisito com: brew install rpm" >&2
+  exit 2
+fi
+
 BRANCH=$(git symbolic-ref --quiet --short HEAD || true)
 if [ -z "$BRANCH" ]; then
   echo "A publicação precisa ser executada em uma branch, não em detached HEAD." >&2

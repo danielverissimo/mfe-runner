@@ -52,6 +52,7 @@ find "$SOURCE_DIR" -maxdepth 1 -type f \
   -o -name "MFE-Runner-$VERSION-*.zip" \
   -o -name "MFE-Runner-$VERSION-*.exe" \
   -o -name "MFE-Runner-$VERSION-*.deb" \
+  -o -name "MFE-Runner-$VERSION-*.rpm" \
   -o -name "MFE-Runner-$VERSION-*.blockmap" \) \
   -exec cp {} "$UPLOAD_DIR/" \;
 
@@ -77,9 +78,16 @@ done | sort -u | while IFS= read -r artifact; do
 done
 
 INSTALLER_COUNT=$(find "$UPLOAD_DIR" -maxdepth 1 -type f \
-  \( -name '*.dmg' -o -name '*.exe' -o -name '*.deb' \) | wc -l | tr -d ' ')
+  \( -name '*.dmg' -o -name '*.exe' -o -name '*.deb' -o -name '*.rpm' \) | wc -l | tr -d ' ')
 if [ "$INSTALLER_COUNT" -eq 0 ]; then
   echo "Nenhum instalador da versão $VERSION encontrado em $SOURCE_DIR" >&2
+  exit 2
+fi
+
+RPM_COUNT=$(find "$UPLOAD_DIR" -maxdepth 1 -type f \
+  -name "MFE-Runner-$VERSION-*.rpm" | wc -l | tr -d ' ')
+if [ "$RPM_COUNT" -ne 2 ]; then
+  echo "A release exige os pacotes RPM x64 e arm64; encontrados: $RPM_COUNT" >&2
   exit 2
 fi
 
@@ -99,7 +107,7 @@ gh release create "$TAG" \
   --repo "$REPOSITORY" \
   --target "$DEFAULT_BRANCH" \
   --title "MFE Runner $VERSION" \
-  --notes "Instaladores oficiais do MFE Runner $VERSION para macOS, Windows e Linux." \
+  --notes "Instaladores oficiais do MFE Runner $VERSION para macOS, Windows, Debian/Ubuntu e Fedora/RHEL." \
   --draft
 
 if ! gh release upload "$TAG" "$UPLOAD_DIR"/* --repo "$REPOSITORY"; then

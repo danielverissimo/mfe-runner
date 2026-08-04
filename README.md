@@ -53,7 +53,8 @@ Installers are published for:
 
 - macOS on Apple Silicon (`arm64`) and Intel (`x64`);
 - Windows 11 on ARM (`arm64`) and legacy 32-bit Windows (`ia32`);
-- Debian/Ubuntu Linux on ARM (`arm64`) and Intel/AMD (`x64`).
+- Debian/Ubuntu Linux with DEB packages on ARM (`arm64`) and Intel/AMD (`x64`);
+- Fedora/RHEL Linux with RPM packages on ARM (`arm64`) and Intel/AMD (`x64`).
 
 Download the recommended installer for your platform from
 [mferunner.com](https://mferunner.com/) or directly from
@@ -432,6 +433,8 @@ npm run dist:win:arm64:installer
 npm run dist:win:ia32:installer
 npm run dist:linux:arm64:installer
 npm run dist:linux:x64:installer
+npm run dist:linux:arm64:rpm
+npm run dist:linux:x64:rpm
 ```
 
 Every `dist:*` command clears generated `dist/` and `release/` output before
@@ -444,7 +447,9 @@ output.
 The macOS artifacts require the `mfe-runner-notary` Keychain profile and fail
 instead of silently distributing an unnotarized application. Windows
 installers remain unsigned until an Authenticode certificate is configured, so
-Windows SmartScreen may display a warning.
+Windows SmartScreen may display a warning. RPM packaging requires `rpmbuild`;
+install it on the official macOS build host with `brew install rpm` before
+running the complete release workflow.
 
 ## Releases and automatic updates
 

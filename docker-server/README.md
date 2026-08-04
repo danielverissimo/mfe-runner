@@ -108,7 +108,8 @@ O script envia:
 - `latest*.yml`, usados pelo `electron-updater`;
 - DMGs e ZIPs do macOS;
 - instaladores NSIS do Windows;
-- pacotes DEB do Linux;
+- pacotes DEB do Linux para Debian/Ubuntu;
+- pacotes RPM do Linux para Fedora/RHEL;
 - blockmaps gerados pelo electron-builder.
 
 Releases em rascunho ou marcadas como pré-release não são oferecidas pelo app

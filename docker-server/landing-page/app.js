@@ -1,3 +1,5 @@
+import { catalogFromGitHubReleases } from './download-catalog.js';
+
 const RELEASES_API_URL = '/api/releases';
 const LANGUAGE_KEY = 'mfe-runner.language';
 const SUPPORTED_LANGUAGES = ['pt-BR', 'es', 'en', 'fr'];
@@ -90,6 +92,8 @@ const SITE_TRANSLATIONS = [
   ['Intel 64 bits', 'Intel de 64 bits', 'Intel 64-bit', 'Intel 64 bits'],
   ['x86 32 bits', 'x86 de 32 bits', 'x86 32-bit', 'x86 32 bits'],
   ['Instalador automático', 'Instalador automático', 'Automatic installer', 'Installateur automatique'],
+  ['Debian / Ubuntu', 'Debian / Ubuntu', 'Debian / Ubuntu', 'Debian / Ubuntu'],
+  ['Fedora / RHEL', 'Fedora / RHEL', 'Fedora / RHEL', 'Fedora / RHEL'],
   ['Sistema não identificado', 'Sistema no identificado', 'System not identified', 'Système non identifié'],
   ['Arquitetura não informada pelo navegador', 'Arquitectura no informada por el navegador', 'Architecture not reported by the browser', 'Architecture non indiquée par le navigateur'],
   ['Versão {version} · atualização automática disponível', 'Versión {version} · actualización automática disponible', 'Version {version} · automatic update available', 'Version {version} · mise à jour automatique disponible'],
@@ -258,7 +262,17 @@ function architectureLabel(arch, os = 'unknown') {
 }
 
 function platformLabel(download) {
-  return `${platformMeta[download.os]?.name || download.os} · ${architectureLabel(download.arch, download.os)}`;
+  return [
+    platformMeta[download.os]?.name || download.os,
+    architectureLabel(download.arch, download.os),
+    linuxDistributionLabel(download),
+    download.extension?.toUpperCase(),
+  ].filter(Boolean).join(' · ');
+}
+
+function linuxDistributionLabel(download) {
+  if (download.os !== 'linux') return '';
+  return translate(download.extension === 'rpm' ? 'Fedora / RHEL' : 'Debian / Ubuntu');
 }
 
 function chooseRecommended(downloads, detected) {
@@ -302,7 +316,10 @@ function renderRecommended(release, detected) {
 
   selectors.recommendedTitle.textContent = translate('MFE Runner para {platform}')
     .replace('{platform}', platformMeta[download.os]?.name || download.os);
-  selectors.recommendedDescription.textContent = architectureLabel(download.arch, download.os);
+  selectors.recommendedDescription.textContent = [
+    architectureLabel(download.arch, download.os),
+    linuxDistributionLabel(download),
+  ].filter(Boolean).join(' · ');
   selectors.recommendedSize.textContent = [formatBytes(download.size), download.extension?.toUpperCase()]
     .filter(Boolean)
     .join(' · ');
@@ -353,6 +370,8 @@ function renderDownloads(release) {
     title.textContent = platformMeta[download.os]?.name || download.os;
     detail.textContent = [
       architectureLabel(download.arch, download.os),
+      linuxDistributionLabel(download),
+      download.extension?.toUpperCase(),
       formatBytes(download.size),
     ].filter(Boolean).join(' · ');
     text.append(title, detail);
@@ -373,59 +392,6 @@ function renderReleaseOptions(catalog) {
     option.textContent = `v${release.version}`;
     selectors.releaseSelect.append(option);
   }
-}
-
-function installerFromAsset(asset, version) {
-  const definitions = [
-    {
-      pattern: /^MFE-Runner-.+-mac-(arm64|x64)\.dmg$/,
-      os: 'mac',
-    },
-    {
-      pattern: /^MFE-Runner-.+-windows-(arm64|ia32|x64)\.exe$/,
-      os: 'windows',
-    },
-    {
-      pattern: /^MFE-Runner-.+-linux-(arm64|amd64|x64)\.deb$/,
-      os: 'linux',
-    },
-  ];
-
-  for (const definition of definitions) {
-    const match = asset.name.match(definition.pattern);
-    if (!match) continue;
-    const arch = match[1] === 'amd64' ? 'x64' : match[1];
-    return {
-      os: definition.os,
-      arch,
-      file: asset.name,
-      extension: asset.name.split('.').pop(),
-      label: `${definition.os}-${arch}`,
-      size: asset.size,
-      url: asset.browser_download_url,
-      version,
-    };
-  }
-
-  return null;
-}
-
-function catalogFromGitHubReleases(releases) {
-  return {
-    releases: releases
-      .filter((release) => !release.draft && !release.prerelease)
-      .map((release) => {
-        const version = String(release.tag_name || release.name || '').replace(/^v/i, '');
-        return {
-          version,
-          publishedAt: release.published_at,
-          downloads: (release.assets || [])
-            .map((asset) => installerFromAsset(asset, version))
-            .filter(Boolean),
-        };
-      })
-      .filter((release) => release.version && release.downloads.length),
-  };
 }
 
 async function loadCatalog() {
