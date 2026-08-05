@@ -6,11 +6,7 @@ if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
   exit 2
 fi
 
-if ! command -v rpmbuild >/dev/null 2>&1; then
-  echo "rpmbuild não encontrado; ele é obrigatório para gerar os pacotes RPM do Fedora." >&2
-  echo "No macOS, instale o pré-requisito com: brew install rpm" >&2
-  exit 2
-fi
+./scripts/build-linux-installers.sh --prepare
 
 BRANCH=$(git symbolic-ref --quiet --short HEAD || true)
 if [ -z "$BRANCH" ]; then
@@ -27,9 +23,10 @@ fi
 npm run release:bump
 VERSION=$(node -p "require('./package.json').version")
 
+npm run dist:installers
+
 git add package.json package-lock.json
 git commit -m "Release v$VERSION"
 git push origin "$BRANCH"
 
-npm run dist:installers
 npm run publish:update

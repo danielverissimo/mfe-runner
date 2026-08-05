@@ -447,9 +447,10 @@ output.
 The macOS artifacts require the `mfe-runner-notary` Keychain profile and fail
 instead of silently distributing an unnotarized application. Windows
 installers remain unsigned until an Authenticode certificate is configured, so
-Windows SmartScreen may display a warning. RPM packaging requires `rpmbuild`;
-install it on the official macOS build host with `brew install rpm` before
-running the complete release workflow.
+Windows SmartScreen may display a warning. Linux packages are built in an
+isolated Node 24 container because the Homebrew `rpmbuild` tool cannot reliably
+cross-package Linux RPMs on macOS. Docker Desktop must be installed and running
+before executing the complete release workflow or an individual RPM command.
 
 ## Releases and automatic updates
 

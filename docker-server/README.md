@@ -86,12 +86,14 @@ Depois, gere e publique uma nova versão:
 npm run dist:installers:publish
 ```
 
-O comando exige uma árvore Git limpa e sincronizada, incrementa a versão patch,
-cria e envia o commit da versão, limpa artefatos antigos, gera todos os
-instaladores no host macOS e cria uma release pública em
-`danielverissimo/mfe-runner`. A release permanece como rascunho enquanto os
-arquivos são enviados e só é publicada depois do upload completo. Assim, a tag
-da release sempre aponta para o código exato usado no build.
+O comando exige uma árvore Git limpa e sincronizada, GitHub CLI autenticado e
+Docker Desktop em execução. Ele incrementa a versão patch, limpa artefatos
+antigos, gera os instaladores no host macOS (com os pacotes Linux isolados em
+container) e somente depois de um build completo cria e envia o commit da
+versão. Por fim, cria uma release pública em `danielverissimo/mfe-runner`. A
+release permanece como rascunho enquanto os arquivos são enviados e só é
+publicada depois do upload completo. Assim, uma falha de build não envia a nova
+versão, e a tag da release aponta para o código exato usado no build.
 
 Para publicar os artefatos da versão atual sem executar outro build:
 
