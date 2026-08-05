@@ -1,4 +1,4 @@
-import { catalogFromGitHubReleases } from './download-catalog.js';
+import { catalogFromGitHubReleases } from './download-catalog.js?v=20260805-rpm';
 
 const RELEASES_API_URL = '/api/releases';
 const LANGUAGE_KEY = 'mfe-runner.language';

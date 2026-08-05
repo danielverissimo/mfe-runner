@@ -25,13 +25,15 @@ apontam diretamente para `github.com`.
 
 ## Preparação do host
 
-O servidor Ubuntu precisa ter Docker Engine e o plugin Docker Compose. O
-usuário `forge` deve poder executar `docker`.
+O servidor Ubuntu precisa ter Docker Engine, `rsync` e o proxy Caddy
+compartilhado no container `reverse-proxy`. Esse proxy é o único responsável
+pelas portas públicas 80 e 443. O usuário `forge` deve poder executar `docker`.
 
 ```bash
 ssh forge@mferunner.com
 docker --version
-docker compose version
+rsync --version
+docker inspect reverse-proxy
 ```
 
 ## Deploy da landing page
@@ -43,23 +45,30 @@ npm run deploy:server
 curl --fail https://mferunner.com/healthz
 ```
 
-O comando sincroniza apenas Docker Compose, Caddy e os arquivos da landing
-page. Nenhum binário é enviado para `mferunner.com`.
+O comando sincroniza os arquivos da landing page e o fragmento Caddy exclusivo
+do domínio `mferunner.com`. Nenhum binário é enviado para `mferunner.com`.
 
 ### Isolamento e segurança do deploy
 
-O deploy é deliberadamente limitado ao projeto Compose
-`mfe-runner-update-server` e ao serviço `update-server`:
+O deploy é deliberadamente limitado aos arquivos do MFE Runner atendidos pelo
+proxy compartilhado:
 
 - utiliza staging dentro de `/home/forge/mfe-runner-update-server`;
-- valida `compose.yml` e `Caddyfile` antes de substituir os arquivos ativos;
+- valida o fragmento junto com toda a configuração Caddy antes de substituir
+  arquivos ativos;
 - mantém backups datados em `.deploy-backups/`;
-- recria somente `update-server`, sempre com `--no-deps`;
-- aguarda o health check e restaura a versão anterior em caso de falha;
-- nunca executa `docker compose down`, `docker stop`, `docker rm` ou comandos
-  `prune`;
+- preserva o diretório montado da landing page e atualiza seu conteúdo com
+  `rsync --delay-updates`;
+- detecta pelo dispositivo/inode o diretório realmente montado no proxy e,
+  durante a transição do modelo antigo, mantém esse conteúdo e o caminho
+  canônico sincronizados;
+- valida, recarrega e aguarda o health check do `reverse-proxy` sem recriar ou
+  reiniciar o container;
+- restaura a landing page e o fragmento anterior em caso de falha;
+- nunca executa `docker compose`, `docker restart`, `docker stop`, `docker rm`
+  ou comandos `prune`;
 - não lê, altera ou remove containers, volumes, redes, projetos Compose ou
-  arquivos do Caddy que estejam fora do diretório exclusivo do MFE Runner.
+  fragmentos Caddy de outros projetos.
 
 Não reutilize `MFE_RUNNER_UPDATE_REMOTE_DIR` para uma pasta compartilhada com
 outro serviço. O diretório remoto precisa continuar exclusivo do MFE Runner.

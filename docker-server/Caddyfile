@@ -1,13 +1,8 @@
-{
-	email danyelsanches@gmail.com
-	admin off
-	default_sni 177.73.48.206
-}
-
 mferunner.com {
 	encode zstd gzip
 
 	header {
+		Cache-Control "no-cache"
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
@@ -35,7 +30,7 @@ mferunner.com {
 	}
 
 	handle {
-		root * /srv/landing
+		root * /srv/mferunner
 		file_server
 	}
 
@@ -57,8 +52,4 @@ www.mferunner.com {
 		}
 	}
 	redir https://mferunner.com{uri} permanent
-}
-
-:8080 {
-	respond /healthz "ok" 200
 }
