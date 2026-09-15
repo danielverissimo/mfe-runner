@@ -53,7 +53,10 @@ describe('RunnerSelectComponent', () => {
     fixture.detectChanges();
   });
 
-  afterEach(() => delete document.documentElement.dataset['theme']);
+  afterEach(() => {
+    delete document.documentElement.dataset['theme'];
+    delete document.body.dataset['theme'];
+  });
 
   it('projects options and synchronizes ngModel changes', async () => {
     const select: HTMLSelectElement = fixture.nativeElement.querySelector('select');
@@ -137,10 +140,12 @@ describe('RunnerSelectComponent', () => {
       '.runner-select__trigger',
     );
     document.documentElement.dataset['theme'] = 'light';
+    document.body.dataset['theme'] = 'light';
     fixture.detectChanges();
     const lightBackground = getComputedStyle(trigger).backgroundColor;
 
     document.documentElement.dataset['theme'] = 'dark';
+    document.body.dataset['theme'] = 'dark';
     fixture.detectChanges();
     const darkBackground = getComputedStyle(trigger).backgroundColor;
 

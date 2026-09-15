@@ -374,6 +374,41 @@ test('validates optional local linking and bounded identifier-only link requests
   );
 });
 
+test('allows incomplete disabled library links while requiring complete enabled links', () => {
+  const input = (link) => ({
+    name: 'Library workspace',
+    projectSources: [{
+      rootPath: '/workspace/shared-lib',
+      projects: [{ relativePath: '.', kind: 'library', localLibraryLink: link }],
+    }],
+  });
+  const link = {
+    enabled: false,
+    packageName: 'shared-lib',
+    developmentScript: '',
+    artifactRelativePath: 'dist/shared-lib',
+    preferredLinkScript: 'link:shared',
+  };
+  assert.deepEqual(
+    validateWorkspaceInput(input(link)).projectSources[0].projects[0].localLibraryLink,
+    link,
+  );
+  assert.deepEqual(
+    validateWorkspaceInput(input({ enabled: false }))
+      .projectSources[0].projects[0].localLibraryLink,
+    { enabled: false, packageName: '', developmentScript: '', artifactRelativePath: '', preferredLinkScript: '' },
+  );
+  assert.throws(() => validateWorkspaceInput(input({ ...link, enabled: true })), /script de desenvolvimento inválido/);
+  for (const invalid of [
+    { artifactRelativePath: '../outside' },
+    { preferredLinkScript: 'postinstall' },
+    { developmentScript: 'x'.repeat(101) },
+    { developmentScript: {} },
+  ]) {
+    assert.throws(() => validateWorkspaceInput(input({ ...link, ...invalid })));
+  }
+});
+
 test('requires a version for explicit Node policies', () => {
   assert.throws(() => validateNodePolicy({ mode: 'explicit' }), /Informe a versão/);
   assert.deepEqual(

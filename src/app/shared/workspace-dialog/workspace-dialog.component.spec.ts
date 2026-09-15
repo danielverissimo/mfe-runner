@@ -308,6 +308,35 @@ describe('WorkspaceDialogComponent', () => {
     });
   });
 
+  it('allows a scriptless library to be saved with local linking disabled', () => {
+    const component = fixture.componentInstance;
+    component.name = 'Workspace';
+    const index = component.beginInspection('/workspace/lib');
+    component.setInspection(index, {
+      rootPath: '/workspace/lib', sourceType: 'project', warnings: [],
+      projects: [candidate({
+        suggestedKind: 'library', scripts: [],
+        localLinkSuggestion: {
+          packageName: 'shared-lib', developmentScript: '',
+          artifactRelativePath: 'dist/shared-lib', preferredLinkScript: 'link:shared',
+        },
+      })],
+    });
+    expect(component.sources[0].projects[0].linkEnabled).toBeFalse();
+    expect(component.valid()).toBeTrue();
+    spyOn(component.saveWorkspace, 'emit');
+    component.submit();
+    const saved = (component.saveWorkspace.emit as jasmine.Spy).calls.mostRecent().args[0];
+    expect(saved.projectSources[0].projects[0].localLibraryLink).toEqual({
+      enabled: false, packageName: 'shared-lib', developmentScript: '',
+      artifactRelativePath: 'dist/shared-lib', preferredLinkScript: 'link:shared',
+    });
+    component.setLinkEnabled(0, 0, true);
+    expect(component.valid()).toBeFalse();
+    component.setLinkEnabled(0, 0, false);
+    expect(component.valid()).toBeTrue();
+  });
+
   it('recalculates detected kinds without replacing a user override', () => {
     const index = fixture.componentInstance.beginInspection('/workspace/root');
     fixture.componentInstance.setInspection(index, {

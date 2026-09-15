@@ -308,7 +308,13 @@ function validateLinkScript(value, label) {
 function validateLocalLibraryLink(value, label) {
   if (value === undefined || value === null) return undefined;
   const library = assertPlainObject(value, label);
-  const artifactRelativePath = assertNonEmptyString(
+  const enabled = library.enabled === true;
+  // Preserve the explicit opt-out and any completed fields without requiring
+  // execution settings for a disabled link.
+  const field = (value, fieldLabel, maxLength = 2048) => enabled
+    ? assertNonEmptyString(value, fieldLabel, maxLength)
+    : assertOptionalString(value, fieldLabel, maxLength) ?? '';
+  const artifactRelativePath = field(
     library.artifactRelativePath,
     `${label}: artefato`,
   );
@@ -319,19 +325,23 @@ function validateLocalLibraryLink(value, label) {
   ) {
     throw new TypeError(`${label}: o artefato deve ser relativo e seguro.`);
   }
+  const preferredLinkScript = field(
+    library.preferredLinkScript,
+    `${label}: script de vínculo`,
+    100,
+  );
   return {
-    enabled: library.enabled === true,
-    packageName: assertNonEmptyString(library.packageName, `${label}: pacote`, 214),
-    developmentScript: assertNonEmptyString(
+    enabled,
+    packageName: field(library.packageName, `${label}: pacote`, 214),
+    developmentScript: field(
       library.developmentScript,
       `${label}: script de desenvolvimento`,
       100,
     ),
     artifactRelativePath,
-    preferredLinkScript: validateLinkScript(
-      library.preferredLinkScript,
-      `${label}: script de vínculo`,
-    ),
+    preferredLinkScript: preferredLinkScript
+      ? validateLinkScript(preferredLinkScript, `${label}: script de vínculo`)
+      : '',
   };
 }
 

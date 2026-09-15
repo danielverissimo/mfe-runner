@@ -160,6 +160,49 @@ test('suggests library only from reliable Angular library evidence', async () =>
   );
 });
 
+test('represents each nested Angular library once when inspecting an ancestor directory', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-detector-nested-libraries-'));
+  for (const directory of ['libs/first', 'libs/second']) {
+    await packageProject(path.join(root, directory), {
+      scripts: { build: 'ng build', watch: 'ng build --watch' },
+      angularType: 'library',
+      ngPackage: true,
+      nestedPackageName: '@example/shared-ui',
+    });
+  }
+  // An unrelated project with the same package name must remain visible.
+  await packageProject(path.join(root, 'independent'), {
+    name: '@example/shared-ui', scripts: { start: 'node index.js' },
+  });
+  const inspection = publicSourceInspection(await inspectProjectSource(root));
+  assert.deepEqual(inspection.projects.map((item) => item.relativePath).sort(), [
+    'independent', 'libs/first', 'libs/second',
+  ]);
+  for (const library of inspection.projects.filter((item) => item.suggestedKind === 'library')) {
+    assert.deepEqual(library.scripts, ['build', 'watch']);
+    assert.equal(library.localLinkSuggestion.developmentScript, 'watch');
+    assert.equal(library.localLinkSuggestion.artifactRelativePath, 'dist/shared-ui');
+  }
+  const exact = await inspectProjectSource(path.join(root, 'libs/first'));
+  assert.deepEqual(exact.projects.map((item) => item.relativePath), ['.']);
+});
+
+test('keeps distinct libraries in an Angular workspace with multiple projects', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-detector-multiple-libraries-'));
+  await packageProject(root, { scripts: { build: 'ng build' } });
+  await writeFile(path.join(root, 'angular.json'), JSON.stringify({ projects: {
+    first: { root: 'projects/first', projectType: 'library' },
+    second: { root: 'projects/second', projectType: 'library' },
+  } }));
+  for (const name of ['first', 'second']) {
+    await packageProject(path.join(root, 'projects', name), { ngPackage: true });
+  }
+  const inspection = await inspectProjectSource(root);
+  assert.deepEqual(inspection.projects.map((item) => item.relativePath).sort(), [
+    '.', 'projects/first', 'projects/second',
+  ]);
+});
+
 test('ignores dependency and output directories while scanning', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'runner-detector-ignore-'));
   await packageProject(path.join(root, 'app'), {

@@ -191,7 +191,8 @@ export class WorkspaceDialogComponent implements OnChanges {
           kind === 'library' &&
           candidate.suggestedKind === 'library' &&
           candidate.ecosystem === 'node' &&
-          !!candidate.localLinkSuggestion;
+          !!candidate.localLinkSuggestion?.developmentScript &&
+          candidate.scripts.includes(candidate.localLinkSuggestion.developmentScript);
         return {
           name: candidate.name,
           relativePath: candidate.relativePath,

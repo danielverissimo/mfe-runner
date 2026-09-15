@@ -212,6 +212,9 @@ export class PackageJsonProjectDetector {
       packageJson,
       angularConfig,
       angularProjects,
+      representedLibraryPath: ownAngularProjects.length === 1 && angularLibraryProject?.root
+        ? path.resolve(projectPath, angularLibraryProject.root)
+        : null,
       federation,
       libraryArtifactRelativePath:
         ngPackageDestination &&
@@ -405,20 +408,18 @@ export async function inspectProjectSource(rootPath, onProgress = () => undefine
     });
   }
   projects = removeFlutterAndroidModules(projects);
-  const rootCandidate = projects.find(
-    (project) => project.relativePath === '.',
+  // A single-library Angular workspace owns its nested package. Apply this
+  // relationship to every discovered workspace, regardless of the scan root.
+  const representedLibraryPaths = new Set(projects.flatMap((project) => {
+    if (!project.representedLibraryPath) return [];
+    const relative = path.relative(project.absolutePath, project.representedLibraryPath);
+    return relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+      ? [project.representedLibraryPath]
+      : [];
+  }));
+  projects = projects.filter((project) =>
+    project.ecosystem !== 'node' || !representedLibraryPaths.has(project.absolutePath)
   );
-  const representedLibraryRoot = rootCandidate?.angularProjects?.length === 1 &&
-      rootCandidate.angularProjects[0][1]?.projectType === 'library'
-    ? normalizeRelative(rootCandidate.angularProjects[0][1]?.root ?? '.')
-    : null;
-  if (representedLibraryRoot && representedLibraryRoot !== '.') {
-    projects = projects.filter(
-      (project) =>
-        project === rootCandidate ||
-        project.relativePath !== representedLibraryRoot,
-    );
-  }
   if (!projects.length) {
     throw new Error('Nenhum projeto compatível foi encontrado neste path.');
   }
