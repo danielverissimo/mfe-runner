@@ -28,15 +28,20 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 2
 fi
 
-if ! docker info >/dev/null 2>&1; then
+echo "Verificando Docker (limite de 15 segundos)..."
+if ! node "$SCRIPT_DIR/build-network.mjs" --timeout-ms 15000 -- docker info >/dev/null; then
   echo "Docker não está disponível. Inicie o Docker Desktop e tente novamente." >&2
   exit 2
 fi
 
-docker build \
+echo "Preparando imagem de empacotamento Linux..."
+node "$SCRIPT_DIR/build-network.mjs" --attempts 3 -- docker build \
   --file "$SCRIPT_DIR/linux-packager.Dockerfile" \
   --tag "$IMAGE" \
   "$SCRIPT_DIR"
+
+mkdir -p "$ELECTRON_CACHE_DIR" "$ELECTRON_BUILDER_CACHE_DIR"
+node "$SCRIPT_DIR/prepare-linux-electron.mjs" "$ELECTRON_CACHE_DIR"
 
 if [ "${1:-}" = "--prepare" ]; then
   if [ "$#" -ne 1 ]; then
@@ -56,10 +61,8 @@ if [ ! -d "$NODE_MODULES_DIR" ]; then
   exit 2
 fi
 
-mkdir -p "$ELECTRON_CACHE_DIR" "$ELECTRON_BUILDER_CACHE_DIR"
-
 run_in_linux_packager() {
-  docker run --rm \
+  node "$SCRIPT_DIR/build-network.mjs" --attempts 3 -- docker run --rm \
     --mount "type=bind,source=$PROJECT_DIR,target=/project" \
     --mount "type=bind,source=$NODE_MODULES_DIR,target=/project/node_modules,readonly" \
     --mount "type=bind,source=$ELECTRON_CACHE_DIR,target=/root/.cache/electron" \
@@ -69,4 +72,6 @@ run_in_linux_packager() {
     "$@"
 }
 
-run_in_linux_packager npm exec electron-builder -- --linux "$@" --publish never
+echo "Gerando pacotes Linux com Electron já verificado no cache..."
+run_in_linux_packager npm exec electron-builder -- --linux "$@" \
+  --config.electronDist=/root/.cache/electron/mfe-runner-linux --publish never

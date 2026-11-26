@@ -466,6 +466,28 @@ isolated Node 24 container because the Homebrew `rpmbuild` tool cannot reliably
 cross-package Linux RPMs on macOS. Docker Desktop must be installed and running
 before executing the complete release workflow or an individual RPM command.
 
+Linux preparation checks Docker with a 15-second limit and downloads the
+Linux Electron distributions on the host before starting the full installer
+build. The ZIPs are verified against the release's official SHA-256 checksums
+and supplied to the container through the shared cache. Transient DNS and
+connection failures have up to three attempts; checksum and packaging errors
+stop immediately.
+
+If Linux packaging fails after macOS/Windows installers were generated, resume
+only the Linux targets without clearing the existing artifacts or bumping the
+version again:
+
+```bash
+./scripts/build-linux-installers.sh deb rpm --arm64 --x64
+npm run verify:packaged-dependencies
+```
+
+Before publishing this recovered version, commit and push its version files and
+any release-script fixes, then use `npm run publish:update`. Do not restart
+`dist:installers:publish` for this recovery: it expects a clean tree, increments
+the patch version and clears previous build output. See
+[network failure recovery](docs/RELEASE_NETWORK_RECOVERY.md).
+
 ## Releases and automatic updates
 
 Official binaries and updater metadata are hosted in

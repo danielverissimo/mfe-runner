@@ -114,6 +114,25 @@ O repositório precisa ter uma branch padrão e a release da versão não pode
 existir. Releases publicadas são imutáveis nesse fluxo; para corrigir uma
 versão, incremente a versão e publique uma nova release.
 
+Se o build parou no Linux com `EAI_AGAIN github.com`, houve uma falha de DNS
+durante um download no container. O fluxo agora prepara os ZIPs do Electron no
+host, valida os checksums oficiais e usa esse cache no container. Falhas
+temporárias de rede têm até três tentativas e a consulta inicial ao Docker tem
+limite de 15 segundos.
+
+Para aproveitar instaladores macOS/Windows já gerados e manter a versão
+incrementada pela tentativa anterior:
+
+```bash
+./scripts/build-linux-installers.sh deb rpm --arm64 --x64
+npm run verify:packaged-dependencies
+```
+
+Depois, registre e envie os arquivos da versão e os ajustes de build no Git;
+publique com `npm run publish:update`. O comando direto do Linux preserva os
+outros instaladores. A retomada não exige outro incremento de versão nem
+refazer assinatura/notarização dos pacotes macOS existentes.
+
 O script envia:
 
 - `latest*.yml`, usados pelo `electron-updater`;

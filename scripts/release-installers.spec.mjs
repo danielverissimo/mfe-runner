@@ -63,6 +63,10 @@ test('Linux packaging uses an isolated Node 24 container with RPM tools', async 
     /source=\$NODE_MODULES_DIR,target=\/project\/node_modules,readonly/,
   );
   assert.doesNotMatch(buildScript, /run_in_linux_packager npm ci/);
+  assert.match(buildScript, /build-network\.mjs" --timeout-ms 15000 -- docker info/);
+  assert.match(buildScript, /build-network\.mjs" --attempts 3 -- docker run/);
+  assert.match(buildScript, /--config\.electronDist=\/root\/\.cache\/electron\/mfe-runner-linux/);
+  assert.ok(buildScript.indexOf('prepare-linux-electron.mjs') < buildScript.indexOf('if [ "${1:-}" = "--prepare" ]'));
 });
 
 test('GitHub publication uploads RPM files and requires both architectures', async () => {
