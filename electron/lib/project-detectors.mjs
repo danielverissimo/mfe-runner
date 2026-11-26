@@ -1,5 +1,6 @@
 import { readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { supportsVcliRelease } from './vcli-release.mjs';
 import {
   directoryHasEcosystemMarker,
   NON_NODE_PROJECT_DETECTORS,
@@ -16,6 +17,8 @@ const IGNORED_DIRECTORIES = new Set([
   'dist',
   'node_modules',
   'out',
+  'target',
+  'release-worktrees',
   'tmp',
 ]);
 const MAX_DEPTH = 8;
@@ -174,6 +177,16 @@ export class PackageJsonProjectDetector {
       evidence.push('Script executável');
     }
 
+    const vcliRelease = await supportsVcliRelease(projectPath, packageJson);
+    const vcliDesktop = vcliRelease && scripts.desktop === 'tauri dev';
+    const hasTauriDependency = [packageJson.dependencies, packageJson.devDependencies]
+      .some((dependencies) =>
+        dependencies?.['@tauri-apps/cli'] || dependencies?.['@tauri-apps/api']
+      );
+    const representedTauriPath = hasTauriDependency &&
+      await fileExists(path.join(projectPath, 'src-tauri', 'tauri.conf.json'))
+      ? path.join(projectPath, 'src-tauri')
+      : null;
     const commands = Object.keys(scripts).map((script) => ({
       id: `node:script:${script}`,
       label: `npm run ${script}`,
@@ -187,8 +200,19 @@ export class PackageJsonProjectDetector {
       longRunning: ['start', 'dev', 'serve', 'watch'].includes(script),
       task: script,
       args: [],
+      ...(vcliRelease && script === 'release:publish'
+        ? { releaseKind: 'vcli', label: 'Gerar release do VCLI', category: 'build' }
+        : {}),
+      ...(vcliDesktop && script === 'desktop'
+        ? { category: 'watch', longRunning: true }
+        : {}),
+      ...(vcliRelease && (script === 'package' || script.startsWith('package:'))
+        ? { category: 'build' }
+        : {}),
     }));
-    const preferredScript = angularLibrary && scripts.watch
+    const preferredScript = vcliDesktop
+      ? 'desktop'
+      : angularLibrary && scripts.watch
       ? 'watch'
       : scripts.start
         ? 'start'
@@ -215,6 +239,7 @@ export class PackageJsonProjectDetector {
       representedLibraryPath: ownAngularProjects.length === 1 && angularLibraryProject?.root
         ? path.resolve(projectPath, angularLibraryProject.root)
         : null,
+      representedTauriPath,
       federation,
       libraryArtifactRelativePath:
         ngPackageDestination &&
@@ -408,6 +433,14 @@ export async function inspectProjectSource(rootPath, onProgress = () => undefine
     });
   }
   projects = removeFlutterAndroidModules(projects);
+  // A Tauri application's Node package owns its native Cargo project. Match
+  // only the declared native directory so unrelated Rust projects stay visible.
+  const representedTauriPaths = new Set(projects
+    .filter((project) => project.ecosystem === 'node' && project.representedTauriPath)
+    .map((project) => project.representedTauriPath));
+  projects = projects.filter((project) =>
+    project.ecosystem !== 'rust' || !representedTauriPaths.has(project.absolutePath)
+  );
   // A single-library Angular workspace owns its nested package. Apply this
   // relationship to every discovered workspace, regardless of the scan root.
   const representedLibraryPaths = new Set(projects.flatMap((project) => {

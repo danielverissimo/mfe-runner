@@ -879,6 +879,17 @@
   (refreshNodeVersions)="runner.refreshNodeVersions()"
 />
 
+@if (releaseContext()) {
+  <app-vcli-release-dialog
+    [attr.data-theme]="effectiveTheme()"
+    [platform]="runner.snapshot().platform"
+    [starting]="runner.loading()"
+    [error]="runner.error()"
+    (dismiss)="releaseContext.set(null)"
+    (launch)="launchVcliRelease($event)"
+  />
+}
+
 @if (flutterLaunchContext(); as context) {
   <app-flutter-launch-dialog
     [attr.data-theme]="effectiveTheme()"

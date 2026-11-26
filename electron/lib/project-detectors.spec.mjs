@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -395,4 +395,90 @@ dependencies:
       ['server-api', 'java-maven'],
     ],
   );
+});
+
+test('does not rediscover generated release worktrees or Rust target caches', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-release-output-'));
+  try {
+    await packageProject(root, { name: 'vcli', scripts: { dev: 'vite' } });
+    await packageProject(path.join(root, 'staging', 'release-worktrees', 'candidate'), { name: 'release-copy' });
+    await packageProject(path.join(root, 'src-tauri', 'target', 'generated'), { name: 'build-output' });
+    const inspection = publicSourceInspection(await inspectProjectSource(root));
+    assert.deepEqual(inspection.projects.map((project) => project.name), ['vcli']);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('represents VCLI once from its root or an ancestor, preserving its release command', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-vcli-discovery-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const app = path.join(root, 'vcli');
+  const release = path.join(app, 'staging', 'release-worktrees', '1.2.3-example');
+  const manifest = {
+    name: 'vcli',
+    scripts: { dev: 'vite', 'release:publish': 'node scripts/release-orchestrator.mjs' },
+    devDependencies: { '@tauri-apps/cli': '^2.0.0' },
+  };
+  for (const directory of [app, release]) {
+    await mkdir(path.join(directory, 'src-tauri'), { recursive: true });
+    await mkdir(path.join(directory, 'scripts'), { recursive: true });
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify(manifest));
+    await writeFile(path.join(directory, 'src-tauri', 'tauri.conf.json'), '{}');
+    await writeFile(path.join(directory, 'src-tauri', 'Cargo.toml'), '[package]\nname = "vcli"\nversion = "1.2.3"\n');
+    await writeFile(path.join(directory, 'scripts', 'release-orchestrator.mjs'), 'throw new Error("must not execute");');
+    await writeFile(path.join(directory, 'distribution.config.json'), '{}');
+  }
+  await packageProject(path.join(app, 'src-tauri', 'target', 'generated'), { name: 'build-output' });
+
+  for (const [scanRoot, relativePath, sourceType] of [
+    [app, '.', 'project'],
+    [root, 'vcli', 'root'],
+  ]) {
+    const inspection = publicSourceInspection(await inspectProjectSource(scanRoot));
+    assert.equal(inspection.sourceType, sourceType);
+    assert.deepEqual(inspection.warnings, []);
+    assert.deepEqual(inspection.projects.map((project) => [project.relativePath, project.ecosystem]), [[relativePath, 'node']]);
+    const project = inspection.projects[0];
+    assert.equal(project.defaultCommandId, 'node:script:dev');
+    assert.equal(project.commands.find((command) => command.id === 'node:script:release:publish').releaseKind, 'vcli');
+  }
+});
+
+test('folds only the native Tauri Cargo project and keeps independent Rust projects discoverable', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-tauri-discovery-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await packageProject(root, { name: 'desktop-app', scripts: { dev: 'vite' } });
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({
+    name: 'desktop-app', scripts: { dev: 'vite' }, dependencies: { '@tauri-apps/api': '^2.0.0' },
+  }));
+  for (const relative of ['src-tauri', 'tools/native-service']) {
+    await mkdir(path.join(root, relative), { recursive: true });
+    await writeFile(path.join(root, relative, 'Cargo.toml'), '[package]\nname = "native-app"\nversion = "1.0.0"\n');
+  }
+  await writeFile(path.join(root, 'src-tauri', 'tauri.conf.json'), '{}');
+
+  const inspection = await inspectProjectSource(root);
+  assert.deepEqual(inspection.projects.map((project) => [project.relativePath, project.ecosystem]), [
+    ['.', 'node'], ['tools/native-service', 'rust'],
+  ]);
+  const nativeInspection = await inspectProjectSource(path.join(root, 'src-tauri'));
+  assert.equal(nativeInspection.sourceType, 'project');
+  assert.deepEqual(nativeInspection.projects.map((project) => [project.relativePath, project.ecosystem]), [['.', 'rust']]);
+});
+
+test('keeps nested Cargo projects when Tauri ownership markers are incomplete', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runner-tauri-markers-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, 'src-tauri'), { recursive: true });
+  await writeFile(path.join(root, 'src-tauri', 'Cargo.toml'), '[package]\nname = "native-app"\nversion = "1.0.0"\n');
+  await packageProject(root, { name: 'mixed-workspace', scripts: { dev: 'vite' } });
+  await writeFile(path.join(root, 'src-tauri', 'tauri.conf.json'), '{}');
+  assert.equal((await inspectProjectSource(root)).projects.length, 2);
+
+  await rm(path.join(root, 'src-tauri', 'tauri.conf.json'));
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({
+    name: 'mixed-workspace', scripts: { dev: 'vite' }, devDependencies: { '@tauri-apps/cli': '^2.0.0' },
+  }));
+  assert.equal((await inspectProjectSource(root)).projects.length, 2);
 });

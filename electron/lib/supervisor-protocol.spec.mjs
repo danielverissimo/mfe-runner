@@ -13,8 +13,8 @@ import {
 } from './supervisor-protocol.mjs';
 import { SupervisorServer } from './supervisor-server.mjs';
 
-test('uses protocol v9 for supervised external services', () => {
-  assert.equal(SUPERVISOR_PROTOCOL_VERSION, 9);
+test('uses protocol v10 for structured VCLI releases', () => {
+  assert.equal(SUPERVISOR_PROTOCOL_VERSION, 10);
 });
 
 class FakeSupervisor extends EventEmitter {

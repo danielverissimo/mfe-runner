@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { vcliReleaseArgs, vcliReleaseEnvironment } from './vcli-release.mjs';
 
 function windowsNodeInvocation(node, args) {
   if (process.platform === 'win32' &&
@@ -43,6 +44,8 @@ function commandById(project, commandId) {
       ? commandId
       : project.defaultScript;
   if (!legacyTask || !project.scripts?.[legacyTask]) return null;
+  const authoritative = project.commands?.find((command) => command.task === legacyTask);
+  if (authoritative) return authoritative;
   return {
     id: `node:${legacyTask}`,
     label: `npm run ${legacyTask}`,
@@ -88,7 +91,8 @@ export function createLaunchSpecification({
     case 'node':
       invocation = windowsNodeInvocation(
         project.node,
-        ['run', profile.task],
+        ['run', profile.task, ...(profile.releaseKind === 'vcli'
+          ? ['--', ...vcliReleaseArgs(project.release)] : [])],
       );
       break;
     case 'java-maven':
@@ -161,9 +165,11 @@ export function createLaunchSpecification({
     executable: invocation.executable,
     args: invocation.args,
     cwd: project.absolutePath,
-    env: environment,
-    port: project.port,
-    healthCheck: project.healthCheck ?? {
+    env: project.commands?.some((command) => command.releaseKind === 'vcli')
+      ? vcliReleaseEnvironment(environment)
+      : environment,
+    port: profile.releaseKind ? null : project.port,
+    healthCheck: profile.releaseKind ? { type: 'process' } : project.healthCheck ?? {
       type: project.port ? 'tcp' : 'process',
       ...(project.port ? { port: project.port } : {}),
     },

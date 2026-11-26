@@ -61,6 +61,11 @@ Detectors that do not own a directory return without diagnostics when their
 marker is absent. Gradle projects inside a detected Flutter project's
 `android/` directory are treated as implementation modules of that Flutter
 project rather than independent workspace projects.
+Likewise, a Node package declaring `@tauri-apps/cli` or `@tauri-apps/api` and
+`src-tauri/tauri.conf.json` represents its native `src-tauri` Cargo project.
+Only that Rust directory is folded into the Node project; unrelated Rust
+projects and explicitly scanned standalone Cargo roots remain discoverable.
+Generated `target` and `release-worktrees` directories are skipped.
 
 Each adapter provides structured `CommandProfile` entries and runtime
 requirements. `RuntimeResolution` combines project, workspace, and global
@@ -75,7 +80,7 @@ dependency, and VCS directories are skipped.
 
 ## Process supervision
 
-Supervisor protocol v9 uses an authenticated local Unix socket on macOS/Linux
+Supervisor protocol v10 uses an authenticated local Unix socket on macOS/Linux
 or a named pipe on Windows. A private random token is required before methods
 or events are accepted.
 
@@ -181,8 +186,10 @@ Managed project sources are read-only from MFE Runner's perspective. Discovery,
 Git inspection, runtime resolution, and developer shortcuts do not edit project
 files.
 
-The only intentional project-side mutation is the result of a user-requested
-project-owned `link:*` script, normally inside the consumer's `node_modules`.
+Project-owned commands may mutate files when explicitly requested by the user.
+Examples include `link:*` scripts inside a consumer's `node_modules` and the
+VCLI release orchestrator, which creates an isolated release worktree/commit
+and pushes a provenance branch. Runner itself does not implement those writes.
 The Runner itself never rewrites sources, package manifests, environment files,
 federation manifests, or Git state.
 
@@ -209,3 +216,30 @@ the public release catalog.
 
 Signing, notarization, release publication, and landing-page deployment are
 maintainer-only operations.
+
+
+## VCLI release adapter
+
+`electron/lib/vcli-release.mjs::supportsVcliRelease` statically recognizes the
+existing VCLI entry point. `PackageJsonProjectDetector.detect` marks only its
+`release:publish` profile with `releaseKind: vcli`. No command is executed by
+this detection. The Angular standalone `VcliReleaseDialogComponent` emits a
+bounded `VcliReleaseOptions` intent through the existing `ProcessRequest` and
+`RunnerApiService.startProject` bridge; there is no free-form argument field.
+
+`validateProcessRequest` validates version, target, build mode, operation,
+optional account and absolute file paths, rejecting unknown release fields.
+`applyRequestedVcliRelease` rereads bounded project metadata and checks the
+entry point again. The main process requests native confirmation for both
+validation and publication. `createLaunchSpecification` uses the authoritative
+npm profile and `vcliReleaseArgs` to construct fixed argument arrays. Legacy
+script identifiers resolve to the same authoritative profile, requiring the
+same options. Release launches have no application port or HTTP health check.
+Credentials are loaded by the VCLI script, outside the renderer contract.
+
+The existing authenticated supervisor captures output and exit status. Protocol
+v10 replaces daemons with older launch code and blocks release restart before
+stopping the task. Main-process workspace startup/restoration paths cannot
+replay releases without a new operator intent. The adapter's metadata contract
+is specific to the existing VCLI orchestrator; it is not a generic CI or
+publication subsystem. It intentionally does not implement staged recovery.

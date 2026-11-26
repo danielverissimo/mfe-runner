@@ -169,7 +169,11 @@
                           </span>
                         }
                         @for (capability of project.capabilities; track capability) {
-                          <span>{{ capability === 'host' ? 'Host' : capability === 'mfe' ? 'MFE' : 'Angular' }}</span>
+                          @switch (capability) {
+                            @case ('host') { <span>Host</span> }
+                            @case ('mfe') { <span>MFE</span> }
+                            @case ('angular') { <span>Angular</span> }
+                          }
                         }
                         <span>{{ project.kindSource === 'user' ? 'Definido pelo usuário' : 'Detectado' }}</span>
                       </div>

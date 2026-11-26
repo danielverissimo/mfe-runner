@@ -288,3 +288,74 @@ language is restored when the app starts.
 MFE Runner checks GitHub Releases for updates after startup and through
 **Help → Check for updates…**. Download and installation require explicit user
 confirmation.
+
+
+## VCLI releases
+
+1. Run the updated MFE Runner from this checkout (`npm start`, using a Node
+   version accepted by the installed Angular CLI). This source change does not
+   replace a previously installed application.
+2. Add the VCLI repository root as a workspace source and confirm the root
+   Node.js project. If already configured, use **Rediscover** and apply the
+   review. VCLI appears as one Node.js project: its native `src-tauri` Cargo
+   project is part of that application. Generated `target` and
+   `release-worktrees` directories are excluded from scanning. On rediscovery,
+   previously listed native/release copies are removed from the catalog after
+   review; their source files are preserved.
+3. Stop the development process for that row before starting a release.
+   Choose **Gerar release do VCLI** in the tools menu, or select it in the
+   command dropdown and press Start.
+4. Enter an unused stable version (`X.Y.Z`). Choose all platforms or one of
+   macOS/Windows/Linux with x64/arm64, and select **Local · macOS + Docker** or
+   **GitHub Actions**. The local flow requires macOS; including macOS targets
+   in either flow also requires a Mac for DMG validation. On other systems,
+   choose Actions and a Windows/Linux target.
+5. Keep **Validar sem publicar** for a validation run or explicitly choose
+   **Publicar release**. Review inclusion of tracked working-tree changes.
+   Untracked files are excluded unless their checkbox is selected (the VCLI
+   orchestrator may include its own bootstrap tooling automatically).
+6. Optionally enter an already authenticated `gh` account. This is an account
+   name, never a token. The current active account is used when left blank.
+   Optional public-key and release-notes files require absolute paths, without
+   shell expansion such as `~`. Leave them empty to use the orchestrator's
+   defaults. No private key or password is requested by Runner.
+7. Confirm the native dialog. Runner opens the selected project's Logs view;
+   output, failures and exit status come from the managed process.
+
+**Validation has remote effects:** the VCLI `--dry-run` flow still creates a
+release worktree/commit, pushes a provenance branch and executes local or
+Actions builds. It skips publishing the GitHub Release. Canceling the native
+confirmation starts no process. Discovery and opening the form are read-only.
+
+The root project must be named `vcli`, contain `distribution.config.json` and
+`src-tauri/tauri.conf.json`, and expose
+`release:publish: node scripts/release-orchestrator.mjs` in `package.json`.
+Runner recognizes that exact existing contract; it does not generate or
+rewrite release scripts in the managed project. After changes to that entry
+point, rediscover the repository.
+
+Install and authenticate the tools required by the VCLI distribution guide
+before launching. Runner uses the resolved Node runtime and inherited
+environment. On macOS it also appends conventional Cargo, Homebrew and Docker
+CLI directories as PATH fallbacks, preserving the selected Node/inherited
+PATH first. Runner installs no tools. The VCLI orchestrator owns signing,
+keychain access, local private profiles, notarization, GitHub access, disk-space
+checks, target builds and artifact verification. Actions mode requires the
+project's CI configuration and secrets; local mode reads the operator's local
+keys/profiles. Neither mode retrieves secrets from Actions into Runner.
+
+Releases are individual actions. Workspace startup skips a release configured
+as the default command, restoration skips release records, and individual or
+workspace restart cannot repeat a VCLI release. Open the form again for a new
+execution. Stop cancels the managed process; it does not undo a branch push or
+remove a draft/worktree already created by the project script. On failure or
+validation, use the recovery paths printed by the VCLI orchestrator. The staged
+low-level publisher is not configured by this dialog.
+
+Supervisor protocol v10 replaces older detached daemons so release parameters
+and restart guards are understood. The existing protocol migration gracefully
+stops previously managed processes before replacement; restart development
+processes after updating Runner if needed.
+
+See [VCLI release integration evidence](VCLI_RELEASE_INTEGRATION.md) for local
+checks and the distinction between simulated execution and a real release.

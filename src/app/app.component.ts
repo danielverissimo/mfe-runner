@@ -23,6 +23,7 @@ import {
   NodePolicyMode,
   ProcessStatus,
   ProcessRequest,
+  VcliReleaseOptions,
   FlutterDevice,
   FlutterProjectTarget,
   NgrokManagedDomainSuffix,
@@ -32,6 +33,7 @@ import {
   WorkspaceInput,
 } from './core/models/runner.models';
 import { RunnerApiService } from './core/services/runner-api.service';
+import { VcliReleaseDialogComponent } from './shared/vcli-release-dialog/vcli-release-dialog.component';
 import { LogPanelComponent } from './shared/log-panel/log-panel.component';
 import { ExternalServiceDialogComponent } from './shared/external-service-dialog/external-service-dialog.component';
 import {
@@ -133,6 +135,7 @@ function normalizeProjectSearch(value: string): string {
     ActionTooltipDirective,
     I18nRootDirective,
     FlutterLaunchDialogComponent,
+    VcliReleaseDialogComponent,
     ExternalServiceDialogComponent,
     LogPanelComponent,
     NgrokDialogComponent,
@@ -171,6 +174,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly workspaceDialogReviewMode = signal(false);
   readonly workspaceRemoval = signal<WorkspaceRemovalContext | null>(null);
   readonly projectDialogContext = signal<ProjectDialogContext | null>(null);
+  readonly releaseContext = signal<ProjectDialogContext | null>(null);
   readonly flutterLaunchContext = signal<FlutterLaunchContext | null>(null);
   readonly ngrokDialogContext = signal<NgrokDialogContext | null>(null);
   readonly externalServiceDialogOpen = signal(false);
@@ -789,6 +793,14 @@ export class AppComponent implements OnInit, OnDestroy {
       const project = catalog?.projects.find(
         (item) => item.id === request.projectId,
       );
+      if (catalog && project?.commands.some((command) =>
+        command.releaseKind === 'vcli' &&
+        (command.id === request.commandId || command.task === request.commandId ||
+          (!request.commandId && command.task === (request.script ?? project.defaultScript))))) {
+        this.runner.error.set(null);
+        this.releaseContext.set({ catalog, project });
+        return Promise.resolve();
+      }
       if (catalog && project?.ecosystem === 'flutter') {
         const command = project.commands.find(
           (item) => item.id === request.commandId,
@@ -822,6 +834,19 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (action === 'stop') return this.runner.stopProject(request);
     return this.runner.restartProject(request);
+  }
+
+  async launchVcliRelease(release: VcliReleaseOptions): Promise<void> {
+    const context = this.releaseContext();
+    if (!context) return;
+    await this.runner.startProject({
+      workspaceId: context.catalog.workspace.id, projectId: context.project.id,
+      commandId: 'node:script:release:publish', release,
+    });
+    if (!this.runner.error()) {
+      this.releaseContext.set(null);
+      this.inspectLogs(context.project.id, context.catalog.workspace.id);
+    }
   }
 
   async openNgrokDialog(projectId: string): Promise<void> {

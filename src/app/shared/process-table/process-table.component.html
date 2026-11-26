@@ -297,6 +297,9 @@
                     [style.max-height.px]="menuPosition.maxHeight"
                     (click)="$event.stopPropagation()"
                   >
+                    @if (hasRelease(project)) {
+                      <button type="button" role="menuitem" [disabled]="busy || isActive(process?.status)" (click)="release(project)">Gerar release do VCLI</button>
+                    }
                     <button
                       type="button"
                       role="menuitem"

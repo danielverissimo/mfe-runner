@@ -173,6 +173,15 @@ export class ProcessTableComponent {
     });
   }
 
+  release(project: DiscoveredProject): void {
+    this.startProject.emit({ workspaceId: this.workspaceId, projectId: project.id, commandId: 'node:script:release:publish' });
+    this.closeTools();
+  }
+
+  hasRelease(project: DiscoveredProject): boolean {
+    return project.commands.some((command) => command.releaseKind === 'vcli');
+  }
+
   stop(project: DiscoveredProject): void {
     this.stopProject.emit({
       workspaceId: this.workspaceId,

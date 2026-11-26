@@ -135,6 +135,36 @@ describe('AppComponent workspace experience', () => {
     expect(bridge.openNgrokConfig).toHaveBeenCalledTimes(1);
   });
 
+  it('opens the release dialog before execution, preserves failures and opens project logs on success', async () => {
+    const commandId = 'node:script:release:publish';
+    const project: DiscoveredProject = {
+      ...projectFixture, commands: [{
+        id: commandId, task: 'release:publish', label: 'Gerar release do VCLI',
+        category: 'build', args: [], longRunning: false, releaseKind: 'vcli',
+      }],
+    };
+    fixture.componentInstance.runner.snapshot.set({
+      ...snapshotFixture, workspaces: [{ ...snapshotFixture.workspaces[0], projects: [project] }],
+    });
+    await fixture.componentInstance.processAction('start', {
+      workspaceId: 'workspace-1', projectId: project.id, commandId,
+    });
+    expect(window.runnerApi?.startProject).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.releaseContext()?.project.id).toBe(project.id);
+    const options = { version: '1.2.3', target: 'all' as const, mode: 'local' as const, dryRun: true, includeUntracked: false };
+    const start = window.runnerApi!.startProject as jasmine.Spy;
+    start.and.rejectWith(new Error('Falha de pré-requisito'));
+    await fixture.componentInstance.launchVcliRelease(options);
+    expect(fixture.componentInstance.releaseContext()).not.toBeNull();
+    expect(fixture.componentInstance.runner.error()).toContain('pré-requisito');
+    start.and.resolveTo(snapshotFixture);
+    await fixture.componentInstance.launchVcliRelease(options);
+    expect(start).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: project.id, commandId, release: options });
+    expect(fixture.componentInstance.releaseContext()).toBeNull();
+    expect(fixture.componentInstance.section()).toBe('logs');
+    expect(fixture.componentInstance.selectedLogProjectId()).toBe(project.id);
+  });
+
   it('opens the Flutter destination modal and starts with the selected device', async () => {
     const flutterProject: DiscoveredProject = {
       ...projectFixture,

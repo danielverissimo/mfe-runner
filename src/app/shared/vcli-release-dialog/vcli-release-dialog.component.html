@@ -1,0 +1,61 @@
+<div class="backdrop" (click)="!starting && dismiss.emit()" aria-hidden="true"></div>
+<section class="dialog" role="dialog" aria-modal="true" aria-labelledby="release-title" aria-describedby="release-description" [attr.aria-busy]="starting">
+  <header>
+    <div>
+      <span class="badge">VCLI</span>
+      <h2 id="release-title">Gerar release do VCLI</h2>
+      <p id="release-description">Use o fluxo de distribuição do projeto e acompanhe os logs no Runner.</p>
+    </div>
+    <button type="button" class="close-button" aria-label="Fechar release do VCLI" [disabled]="starting" (click)="dismiss.emit()">×</button>
+  </header>
+  <form (ngSubmit)="submit()">
+    <div class="fields">
+      <label for="release-version">Versão
+        <input id="release-version" name="version" [(ngModel)]="version" placeholder="Ex.: 0.14.0" maxlength="40" required [disabled]="starting" autocomplete="off">
+      </label>
+      <label>Destino
+        <app-runner-select name="target" [(ngModel)]="target" [disabled]="starting">
+          @for (item of targets; track item) {
+            <option [value]="item">{{ item === 'all' ? 'Todas as plataformas' : item }}</option>
+          }
+        </app-runner-select>
+      </label>
+      <label>Build
+        <app-runner-select name="mode" [(ngModel)]="mode" [disabled]="starting">
+          <option value="local" [disabled]="platform !== 'darwin'">Local · macOS + Docker</option>
+          <option value="actions">GitHub Actions</option>
+        </app-runner-select>
+      </label>
+      <label>Operação
+        <app-runner-select name="operation" [(ngModel)]="operation" [disabled]="starting">
+          <option value="validate">Validar sem publicar</option>
+          <option value="publish">Publicar release</option>
+        </app-runner-select>
+      </label>
+    </div>
+    <label>Conta GitHub CLI
+      <input name="ghUser" [(ngModel)]="ghUser" placeholder="Conta já autenticada (opcional)" maxlength="39" [disabled]="starting" autocomplete="off">
+    </label>
+    <p class="notice">A validação também envia uma branch ao GitHub e executa os builds.</p>
+    <label class="checkbox"><input type="checkbox" name="includeUntracked" [(ngModel)]="includeUntracked" [disabled]="starting">Incluir arquivos não rastreados</label>
+    <details>
+      <summary>Arquivos opcionais</summary>
+      <label>Chave pública do atualizador
+        <input name="publicKeyFile" [(ngModel)]="publicKeyFile" placeholder="Caminho absoluto (opcional)" [disabled]="starting" autocomplete="off">
+      </label>
+      <label>Notas da release
+        <input name="notesFile" [(ngModel)]="notesFile" placeholder="Caminho absoluto (opcional)" [disabled]="starting" autocomplete="off">
+      </label>
+    </details>
+    <p class="notice">Chaves e credenciais são lidas pelo VCLI no ambiente local.</p>
+    <div class="info">As alterações rastreadas entram na release. O checkout original é preservado.</div>
+    @if (platform !== 'darwin') {
+      <p class="notice">Neste sistema, selecione GitHub Actions e um destino Windows ou Linux.</p>
+    }
+    @if (error) { <p class="error" role="alert">{{ error }}</p> }
+    <footer>
+      <button type="button" [disabled]="starting" (click)="dismiss.emit()">Cancelar</button>
+      <button type="submit" class="primary" [disabled]="!canLaunch()">{{ starting ? 'Iniciando…' : operation === 'validate' ? 'Iniciar validação' : 'Publicar release' }}</button>
+    </footer>
+  </form>
+</section>

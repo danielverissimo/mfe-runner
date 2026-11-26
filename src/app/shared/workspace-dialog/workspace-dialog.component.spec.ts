@@ -3,6 +3,8 @@ import { WorkspaceDialogComponent } from './workspace-dialog.component';
 import { snapshotFixture } from '../../../testing/runner-fixtures';
 import {
   DetectedProjectCandidate,
+  Ecosystem,
+  ProjectCapability,
 } from '../../core/models/runner.models';
 
 function candidate(
@@ -77,6 +79,57 @@ describe('WorkspaceDialogComponent', () => {
     expect(guide.textContent).toContain('Monorepo');
     expect(guide.textContent).toContain('não executa builds ou scripts');
     expect(guide.textContent).toContain('não altera os arquivos dos projetos');
+  });
+
+  const nativeProjects: Array<{
+    ecosystem: Ecosystem;
+    technology: string;
+    capability: ProjectCapability;
+  }> = [
+    { ecosystem: 'rust', technology: 'Rust', capability: 'rust' },
+    { ecosystem: 'java-maven', technology: 'Java / Maven', capability: 'java' },
+    { ecosystem: 'dotnet', technology: '.NET', capability: 'dotnet' },
+    { ecosystem: 'python', technology: 'Python', capability: 'python' },
+    { ecosystem: 'go', technology: 'Go', capability: 'go' },
+  ];
+
+  for (const { ecosystem, technology, capability } of nativeProjects) {
+    it(`shows ${technology} without false Angular or duplicate technology badges`, () => {
+      const index = fixture.componentInstance.beginInspection('/workspace/native-app');
+      fixture.componentInstance.setInspection(index, {
+        rootPath: '/workspace/native-app',
+        sourceType: 'project',
+        warnings: [],
+        projects: [candidate({
+          ecosystem, technology, supportLevel: 'beta',
+          capabilities: [capability, 'application'],
+        })],
+      });
+      fixture.detectChanges();
+
+      const badges = Array.from(
+        fixture.nativeElement.querySelectorAll('.candidate .badges span') as NodeListOf<HTMLElement>,
+        (element) => element.textContent?.trim(),
+      );
+      expect(badges).toEqual([technology, 'Beta', 'Detectado']);
+    });
+  }
+
+  it('preserves genuine Angular, Host and MFE badges', () => {
+    const index = fixture.componentInstance.beginInspection('/workspace/web-app');
+    fixture.componentInstance.setInspection(index, {
+      rootPath: '/workspace/web-app',
+      sourceType: 'project',
+      warnings: [],
+      projects: [candidate({ capabilities: ['angular', 'host', 'mfe'] })],
+    });
+    fixture.detectChanges();
+
+    const badges = Array.from(
+      fixture.nativeElement.querySelectorAll('.candidate .badges span') as NodeListOf<HTMLElement>,
+      (element) => element.textContent?.trim(),
+    );
+    expect(badges).toEqual(['Node.js', 'Angular', 'Host', 'MFE', 'Detectado']);
   });
 
   it('uses the active semantic theme colors in the modal surfaces', () => {

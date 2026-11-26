@@ -40,6 +40,7 @@ import {
   validateWorkspaceInput,
   validateWorkspaceRequest,
 } from './lib/contracts.mjs';
+import { applyRequestedVcliRelease, VCLI_RELEASE_COMMAND } from './lib/vcli-release.mjs';
 import { discoverWorkspace } from './lib/discovery.mjs';
 import { SupervisorClient } from './lib/supervisor-client.mjs';
 import {
@@ -615,6 +616,7 @@ async function restorePreviouslyActiveProjects(workspaceId, records) {
       (candidate) => candidate.id === record.projectId,
     );
     if (!project?.defaultCommandId && !project?.defaultScript) continue;
+    if (record.commandId === VCLI_RELEASE_COMMAND) continue;
     try {
       assertProjectNotActiveInAnotherWorkspace(workspaceId, project);
       await validateFlutterTarget(project);
@@ -737,6 +739,8 @@ async function startWorkspace(workspaceId) {
   if (!catalog) throw new Error('Workspace não descoberta.');
   const failures = [];
   for (const project of orderedExecutableProjects(catalog)) {
+    if (project.defaultCommandId === VCLI_RELEASE_COMMAND ||
+        project.commands?.some((command) => command.releaseKind === 'vcli' && command.task === project.defaultScript)) continue;
     try {
       assertProjectNotActiveInAnotherWorkspace(workspaceId, project);
       await supervisor.start({
@@ -1608,7 +1612,23 @@ function registerIpcHandlers() {
         request.projectId,
       );
       assertProjectNotActiveInAnotherWorkspace(request.workspaceId, project);
-      const launchProject = applyRequestedFlutterTarget(project, request);
+      let launchProject = applyRequestedFlutterTarget(project, request);
+      launchProject = await applyRequestedVcliRelease(launchProject, request);
+      if (launchProject.release) {
+        const options = launchProject.release;
+        const confirmation = await dialog.showMessageBox(mainWindow, {
+          type: 'warning',
+          title: 'Release do VCLI',
+          message: `${options.dryRun ? 'Validar' : 'Publicar'} VCLI ${options.version}?`,
+          detail: `Destino: ${options.target}. Build: ${options.mode}.\n` +
+            'O orquestrador inclui as alterações rastreadas, cria e envia uma branch ao GitHub e executa os builds.' +
+            (options.includeUntracked ? '\nArquivos não rastreados também serão incluídos.' : '') +
+            (options.dryRun ? '\nA Release não será publicada.' : '\nOs instaladores serão publicados no GitHub Releases.'),
+          buttons: ['Cancelar', options.dryRun ? 'Iniciar validação' : 'Publicar release'],
+          defaultId: 0, cancelId: 0,
+        });
+        if (confirmation.response !== 1) return buildSnapshot();
+      }
       await validateFlutterTarget(launchProject);
       await supervisor.start({
         workspace,
@@ -1642,6 +1662,9 @@ function registerIpcHandlers() {
           process.workspaceId === request.workspaceId &&
           process.projectId === request.projectId,
       );
+      if (existing?.commandId === VCLI_RELEASE_COMMAND) {
+        throw new Error('Abra Gerar release do VCLI para uma nova execução.');
+      }
       await supervisor.stop(request.workspaceId, request.projectId);
       await supervisor.start({
         workspace,

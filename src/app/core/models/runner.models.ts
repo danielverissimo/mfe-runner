@@ -31,7 +31,16 @@ export type NgrokManagedDomainSuffix =
   (typeof NGROK_MANAGED_DOMAIN_SUFFIXES)[number];
 export type ProjectKind = 'project' | 'library';
 export type ProjectSourceType = 'project' | 'root' | 'monorepo';
-export type ProjectCapability = 'angular' | 'host' | 'mfe';
+export type ProjectCapability =
+  | 'angular'
+  | 'host'
+  | 'mfe'
+  | 'java'
+  | 'dotnet'
+  | 'python'
+  | 'rust'
+  | 'go'
+  | 'application';
 export type ProjectRole =
   | 'library'
   | 'mfe'
@@ -103,6 +112,7 @@ export interface CommandProfile {
   task: string;
   args: string[];
   flutterTarget?: FlutterTarget;
+  releaseKind?: 'vcli';
 }
 
 export type FlutterTarget =
@@ -619,12 +629,24 @@ export interface WorkspaceInput {
   executionPolicies: ExecutionPolicies;
 }
 
+export interface VcliReleaseOptions {
+  version: string;
+  target: 'all' | 'macos-arm64' | 'macos-x64' | 'windows-arm64' | 'windows-x64' | 'linux-arm64' | 'linux-x64';
+  mode: 'local' | 'actions';
+  dryRun: boolean;
+  includeUntracked: boolean;
+  ghUser?: string;
+  publicKeyFile?: string;
+  notesFile?: string;
+}
+
 export interface ProcessRequest {
   workspaceId: string;
   projectId: string;
   script?: string;
   commandId?: string;
   flutterTarget?: FlutterProjectTarget;
+  release?: VcliReleaseOptions;
 }
 
 export interface LibraryLinkRequest {

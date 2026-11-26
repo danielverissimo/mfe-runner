@@ -110,12 +110,24 @@ and per-project overrides, plus optional `externalServices[]` definitions.
 Previous configurations are backed up and migrated
 automatically, preserving workspaces, stable project IDs, classifications,
 exclusions, visual order, and Node local-library link settings. Supervisor
-protocol v9 gracefully stops processes owned by an obsolete protocol before
+protocol v10 gracefully stops processes owned by an obsolete protocol before
 replacing its detached daemon; project files are unaffected.
 
 Rediscovery is review-first: new, unchanged, and missing projects are shown
 before the catalog is changed. Canceling the review leaves the active catalog
 and running processes untouched.
+
+## VCLI releases
+
+A detected VCLI repository with its existing `release:publish` orchestrator
+exposes **Gerar release do VCLI** in the project tools menu and command selector.
+The dialog supplies a version, platform target, local/Actions build mode,
+validation/publication choice, and optional existing GitHub CLI account,
+public-key path, and release-notes path. Validation is the default; it still
+pushes a provenance branch and builds packages. A native confirmation precedes
+either operation. See [the user guide](docs/USER_GUIDE.md#vcli-releases) for setup,
+credentials, and recovery limits. Adding or rediscovering a project never
+starts a release.
 
 ## Local libraries
 

@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { open, stat } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
+import { VCLI_RELEASE_COMMAND } from './vcli-release.mjs';
 import { createLaunchSpecification } from './launch-specification.mjs';
 import { inspectExternalProcess } from './external-process.mjs';
 import { inspectDockerService } from './external-services.mjs';
@@ -795,6 +796,9 @@ export class ProcessSupervisor extends EventEmitter {
     const record = this.#records.get(processKey(workspaceId, projectId));
     if (!record) throw new Error('Processo não encontrado para reinício.');
     const { workspace, project, script, commandId } = record;
+    if (commandId === VCLI_RELEASE_COMMAND) {
+      throw new Error('Abra Gerar release do VCLI para uma nova execução.');
+    }
     const ngrokLaunch = ['starting', 'online'].includes(record.ngrok?.status)
       ? structuredClone(record.ngrok.launchSpecification)
       : null;

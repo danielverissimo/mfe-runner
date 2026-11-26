@@ -1,3 +1,5 @@
+import { validateVcliRelease } from './vcli-release.mjs';
+
 export const IPC_CHANNELS = Object.freeze({
   getSnapshot: 'runner:get-snapshot',
   listNodeVersions: 'runner:list-node-versions',
@@ -574,6 +576,7 @@ export function validateProcessRequest(value) {
     ...(commandId ? { commandId } : {}),
     ...(script ? { script } : {}),
     ...(flutterTarget ? { flutterTarget } : {}),
+    ...(request.release !== undefined ? { release: validateVcliRelease(request.release) } : {}),
   };
 }
 

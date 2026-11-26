@@ -15,6 +15,21 @@ describe('ProcessTableComponent', () => {
     fixture.detectChanges();
   });
 
+  it('offers the VCLI release intent only for a detected release profile', () => {
+    const component = fixture.componentInstance;
+    expect(component.hasRelease(projectFixture)).toBeFalse();
+    const project = { ...projectFixture, commands: [{
+      id: 'node:script:release:publish', task: 'release:publish', label: 'Gerar release do VCLI',
+      category: 'build' as const, longRunning: false, args: [], releaseKind: 'vcli' as const,
+    }] };
+    expect(component.hasRelease(project)).toBeTrue();
+    spyOn(component.startProject, 'emit');
+    component.release(project);
+    expect(component.startProject.emit).toHaveBeenCalledOnceWith({
+      workspaceId: 'workspace-1', projectId: project.id, commandId: 'node:script:release:publish',
+    });
+  });
+
   afterEach(() => {
     delete document.documentElement.dataset['theme'];
   });
