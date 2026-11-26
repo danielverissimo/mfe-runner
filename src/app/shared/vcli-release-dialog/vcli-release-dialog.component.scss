@@ -26,6 +26,9 @@ p { margin: 0; color: var(--runner-text-muted); font-size: 12px; line-height: 1.
 .badge { display: inline-block; border-radius: 8px; padding: 5px 10px; color: var(--runner-primary-bright); background: color-mix(in srgb, var(--runner-primary-bright) 13%, transparent); font-size: 11px; font-weight: 750; }
 form { display: grid; gap: 16px; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.github-accounts { display: flex; align-items: flex-end; gap: 10px; }
+.github-accounts label { flex: 1; min-width: 0; }
+.github-accounts button { flex-shrink: 0; }
 label { display: grid; gap: 7px; font-size: 12px; font-weight: 650; }
 input:not([type='checkbox']) { box-sizing: border-box; width: 100%; min-height: 38px; border: 1px solid var(--runner-border); border-radius: 9px; padding: 8px 11px; color: var(--runner-text); background: var(--runner-control); font: inherit; }
 input::placeholder { color: var(--runner-text-muted); font-weight: 400; }
@@ -43,4 +46,4 @@ details { font-size: 12px; }
 summary { cursor: pointer; color: var(--runner-text-muted); }
 details label { margin-top: 12px; }
 :focus-visible { outline: 2px solid var(--runner-primary-bright); outline-offset: 3px; }
-@media (max-width: 520px) { .fields { grid-template-columns: 1fr; } .dialog { padding: 18px; } }
+@media (max-width: 520px) { .fields { grid-template-columns: 1fr; } .dialog { padding: 18px; } .github-accounts { align-items: stretch; flex-direction: column; } }

@@ -1,6 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 import {
   AndroidEmulator,
+  GitHubAccountCatalog,
   DeveloperToolCatalog,
   DiagnosticExportRequest,
   DiagnosticExportResult,
@@ -351,6 +352,10 @@ export class RunnerApiService {
     } finally {
       this.developerToolsLoading.set(false);
     }
+  }
+
+  listGitHubAccounts(): Promise<GitHubAccountCatalog> {
+    return this.getApi().listGitHubAccounts();
   }
 
   listFlutterDevices(workspaceId: string, projectId: string): Promise<{ devices: FlutterDevice[]; message?: string }> {

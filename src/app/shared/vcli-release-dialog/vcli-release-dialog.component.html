@@ -33,9 +33,29 @@
         </app-runner-select>
       </label>
     </div>
-    <label>Conta GitHub CLI
-      <input name="ghUser" [(ngModel)]="ghUser" placeholder="Conta já autenticada (opcional)" maxlength="39" [disabled]="starting" autocomplete="off">
-    </label>
+    <div class="github-accounts">
+      <label>Conta GitHub CLI
+        <app-runner-select name="ghUser" ariaLabel="Conta GitHub CLI" ariaDescribedBy="github-account-status" [(ngModel)]="ghUser" [disabled]="starting || accountsLoading">
+          <option value="">Usar conta ativa do GitHub CLI</option>
+          @for (account of accounts?.accounts ?? []; track account.login) {
+            <option [value]="account.login" [disabled]="account.state !== 'success'">{{ account.login }}</option>
+          }
+          @if (ghUser && !selectedAccount()) {
+            <option [value]="ghUser" disabled>{{ ghUser }}</option>
+          }
+        </app-runner-select>
+      </label>
+      <button type="button" [disabled]="starting || accountsLoading" (click)="refreshAccounts.emit()">Atualizar contas</button>
+    </div>
+    <p id="github-account-status" class="notice" role="status" aria-live="polite">
+      {{ accountsLoading ? 'Carregando contas do GitHub CLI…' : accounts?.message ?? 'Contas disponíveis no GitHub CLI deste computador.' }}
+    </p>
+    @if (!accountsLoading && ghUser && !selectedAccountAvailable()) {
+      <p class="error" role="alert">A conta selecionada não está disponível. Atualize a lista ou escolha outra conta.</p>
+    }
+    @if (hasUnavailableAccounts()) {
+      <p class="notice">Contas com autenticação indisponível ficam desabilitadas. Verifique o gh auth status.</p>
+    }
     <p class="notice">A validação também envia uma branch ao GitHub e executa os builds.</p>
     <label class="checkbox"><input type="checkbox" name="includeUntracked" [(ngModel)]="includeUntracked" [disabled]="starting">Incluir arquivos não rastreados</label>
     <details>

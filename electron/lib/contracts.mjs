@@ -3,6 +3,7 @@ import { validateVcliRelease } from './vcli-release.mjs';
 export const IPC_CHANNELS = Object.freeze({
   getSnapshot: 'runner:get-snapshot',
   listNodeVersions: 'runner:list-node-versions',
+  listGitHubAccounts: 'runner:list-github-accounts',
   listRuntimeInstallations: 'runner:list-runtime-installations',
   listFlutterDevices: 'runner:list-flutter-devices',
   listAndroidEmulators: 'runner:list-android-emulators',

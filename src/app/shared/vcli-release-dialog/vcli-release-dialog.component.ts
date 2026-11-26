@@ -4,7 +4,7 @@ import {
 } from '@angular/core';
 import { I18nRootDirective } from '../../core/i18n/i18n-root.directive';
 import { FormsModule } from '@angular/forms';
-import { VcliReleaseOptions } from '../../core/models/runner.models';
+import { GitHubAccountCatalog, VcliReleaseOptions } from '../../core/models/runner.models';
 import { RunnerSelectComponent } from '../runner-select/runner-select.component';
 
 @Component({
@@ -20,6 +20,9 @@ export class VcliReleaseDialogComponent implements AfterViewInit, OnDestroy {
   @Input() platform = 'darwin';
   @Input() starting = false;
   @Input() error: string | null = null;
+  @Input() accounts: GitHubAccountCatalog | null = null;
+  @Input() accountsLoading = false;
+  @Output() refreshAccounts = new EventEmitter<void>();
   @Output() dismiss = new EventEmitter<void>();
   @Output() launch = new EventEmitter<VcliReleaseOptions>();
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -60,12 +63,24 @@ export class VcliReleaseDialogComponent implements AfterViewInit, OnDestroy {
   }
 
   canLaunch(): boolean {
-    return !this.starting &&
+    return !this.starting && !this.accountsLoading &&
       /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(this.version.trim()) &&
       this.version.trim().length <= 40 &&
-      (!this.ghUser.trim() || /^[a-zA-Z0-9][a-zA-Z0-9-]{0,38}$/.test(this.ghUser.trim())) &&
+      (!this.ghUser || this.selectedAccountAvailable()) &&
       (this.platform === 'darwin' ||
         (this.mode === 'actions' && this.target !== 'all' && !this.target.startsWith('macos-')));
+  }
+
+  selectedAccountAvailable(): boolean {
+    return this.selectedAccount()?.state === 'success';
+  }
+
+  selectedAccount() {
+    return this.accounts?.accounts.find((account) => account.login === this.ghUser);
+  }
+
+  hasUnavailableAccounts(): boolean {
+    return !!this.accounts?.accounts.some((account) => account.state !== 'success');
   }
 
   submit(): void {

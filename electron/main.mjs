@@ -49,6 +49,7 @@ import {
 } from './lib/supervisor-exit-policy.mjs';
 import { restartActiveWorkspaceProjects } from './lib/workspace-lifecycle.mjs';
 import { listInstalledNodeVersions } from './lib/node-resolver.mjs';
+import { listGitHubAccounts } from './lib/github-accounts.mjs';
 import { listFlutterDevices, listRuntimeInstallations } from './lib/runtime-resolver.mjs';
 import {
   launchAndroidEmulator,
@@ -835,6 +836,10 @@ function registerIpcHandlers() {
     withValidatedSender(async (payload) =>
       listRuntimeInstallations(validateRuntimeComponentRequest(payload))
     ),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.listGitHubAccounts,
+    withValidatedSender(async () => listGitHubAccounts()),
   );
   ipcMain.handle(
     IPC_CHANNELS.listFlutterDevices,

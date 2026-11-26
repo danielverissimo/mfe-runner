@@ -885,6 +885,9 @@
     [platform]="runner.snapshot().platform"
     [starting]="runner.loading()"
     [error]="runner.error()"
+    [accounts]="githubAccounts()"
+    [accountsLoading]="githubAccountsLoading()"
+    (refreshAccounts)="refreshGitHubAccounts()"
     (dismiss)="releaseContext.set(null)"
     (launch)="launchVcliRelease($event)"
   />

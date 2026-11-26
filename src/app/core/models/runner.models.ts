@@ -678,7 +678,20 @@ export interface DiagnosticExportResult {
   filePath: string | null;
 }
 
+export interface GitHubAccount {
+  login: string;
+  active: boolean;
+  state: 'success' | 'error' | 'unknown';
+}
+
+export interface GitHubAccountCatalog {
+  available: boolean;
+  accounts: GitHubAccount[];
+  message: string | null;
+}
+
 export interface RunnerBridge {
+  listGitHubAccounts(): Promise<GitHubAccountCatalog>;
   getSnapshot(): Promise<RunnerSnapshot>;
   listNodeVersions(): Promise<NodeVersionCatalog>;
   listRuntimeInstallations(input: {

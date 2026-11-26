@@ -6,6 +6,15 @@ describe('VcliReleaseDialogComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({ imports: [VcliReleaseDialogComponent] }).compileComponents();
     fixture = TestBed.createComponent(VcliReleaseDialogComponent);
+    fixture.componentRef.setInput('accounts', {
+      available: true,
+      accounts: [
+        { login: 'example-user', active: true, state: 'success' },
+        { login: 'work-user', active: false, state: 'success' },
+        { login: 'expired-user', active: false, state: 'error' },
+      ],
+      message: null,
+    });
     fixture.detectChanges();
     await fixture.whenStable();
   });
@@ -39,6 +48,70 @@ describe('VcliReleaseDialogComponent', () => {
     expect(component.launch.emit).toHaveBeenCalledOnceWith({
       version: '1.2.3', target: 'linux-x64', mode: 'actions', dryRun: false,
       includeUntracked: false, notesFile: '/tmp/release notes.md',
+    });
+  });
+
+  it('lists computer accounts in a select and sends only the selected login', async () => {
+    spyOn(fixture.componentInstance.launch, 'emit');
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('select[name="ghUser"]');
+    expect(fixture.nativeElement.querySelector('input[name="ghUser"]')).toBeNull();
+    expect(Array.from(select.options, (option) => option.value)).toEqual(['', 'example-user', 'work-user', 'expired-user']);
+    expect(select.options[3].disabled).toBeTrue();
+    select.value = 'work-user';
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    fixture.componentInstance.version = '1.2.3';
+    fixture.componentInstance.submit();
+    expect(fixture.componentInstance.launch.emit).toHaveBeenCalledOnceWith({
+      version: '1.2.3', target: 'all', mode: 'local', dryRun: true, includeUntracked: false, ghUser: 'work-user',
+    });
+  });
+
+  it('shows loading, requests an explicit refresh and preserves a valid selection', async () => {
+    spyOn(fixture.componentInstance.refreshAccounts, 'emit');
+    fixture.componentInstance.version = '1.2.3';
+    fixture.componentInstance.ghUser = 'work-user';
+    fixture.componentRef.setInput('accountsLoading', true);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canLaunch()).toBeFalse();
+    expect(fixture.nativeElement.querySelector('select[name="ghUser"]').disabled).toBeTrue();
+    expect(fixture.nativeElement.querySelector('[role="status"]').textContent).toContain('Carregando contas');
+    fixture.componentRef.setInput('accountsLoading', false);
+    fixture.detectChanges();
+    const refresh = Array.from(fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>)
+      .find((button) => button.textContent?.includes('Atualizar contas'))!;
+    refresh.click();
+    expect(fixture.componentInstance.refreshAccounts.emit).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.ghUser).toBe('work-user');
+  });
+
+  it('blocks a removed, invalid or unavailable account without silently switching to the active one', () => {
+    fixture.componentInstance.version = '1.2.3';
+    for (const login of ['expired-user', 'missing-user', '--help']) {
+      fixture.componentInstance.ghUser = login;
+      expect(fixture.componentInstance.canLaunch()).toBeFalse();
+    }
+    fixture.componentInstance.ghUser = 'work-user';
+    fixture.componentRef.setInput('accounts', { available: true, accounts: [], message: null });
+    fixture.detectChanges();
+    expect(fixture.componentInstance.ghUser).toBe('work-user');
+    expect(fixture.componentInstance.canLaunch()).toBeFalse();
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain('conta selecionada não está disponível');
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('select[name="ghUser"]');
+    expect(Array.from(select.options).filter((option) => option.value === 'work-user').length).toBe(1);
+  });
+
+  it('shows an empty/error catalog and allows the explicit active-account fallback', () => {
+    fixture.componentRef.setInput('accounts', {
+      available: false, accounts: [], message: 'GitHub CLI não encontrado. Instale o gh e autentique suas contas.',
+    });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="status"]').textContent).toContain('GitHub CLI não encontrado');
+    fixture.componentInstance.version = '1.2.3';
+    spyOn(fixture.componentInstance.launch, 'emit');
+    fixture.componentInstance.submit();
+    expect(fixture.componentInstance.launch.emit).toHaveBeenCalledOnceWith({
+      version: '1.2.3', target: 'all', mode: 'local', dryRun: true, includeUntracked: false,
     });
   });
 

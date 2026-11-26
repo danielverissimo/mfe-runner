@@ -122,8 +122,10 @@ and running processes untouched.
 A detected VCLI repository with its existing `release:publish` orchestrator
 exposes **Gerar release do VCLI** in the project tools menu and command selector.
 The dialog supplies a version, platform target, local/Actions build mode,
-validation/publication choice, and optional existing GitHub CLI account,
-public-key path, and release-notes path. Validation is the default; it still
+validation/publication choice, and an optional account selected from the
+computer's GitHub CLI accounts, public-key path, and release-notes path.
+The account list loads when the dialog opens and can be refreshed.
+Validation is the default; it still
 pushes a provenance branch and builds packages. A native confirmation precedes
 either operation. See [the user guide](docs/USER_GUIDE.md#vcli-releases) for setup,
 credentials, and recovery limits. Adding or rediscovering a project never

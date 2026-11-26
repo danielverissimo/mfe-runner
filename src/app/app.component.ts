@@ -13,6 +13,7 @@ import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
   AndroidEmulator,
+  GitHubAccountCatalog,
   DiscoveredProject,
   AppTheme,
   Ecosystem,
@@ -175,6 +176,9 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly workspaceRemoval = signal<WorkspaceRemovalContext | null>(null);
   readonly projectDialogContext = signal<ProjectDialogContext | null>(null);
   readonly releaseContext = signal<ProjectDialogContext | null>(null);
+  readonly githubAccounts = signal<GitHubAccountCatalog | null>(null);
+  readonly githubAccountsLoading = signal(false);
+  private githubAccountsRequest = 0;
   readonly flutterLaunchContext = signal<FlutterLaunchContext | null>(null);
   readonly ngrokDialogContext = signal<NgrokDialogContext | null>(null);
   readonly externalServiceDialogOpen = signal(false);
@@ -799,6 +803,8 @@ export class AppComponent implements OnInit, OnDestroy {
           (!request.commandId && command.task === (request.script ?? project.defaultScript))))) {
         this.runner.error.set(null);
         this.releaseContext.set({ catalog, project });
+        this.githubAccounts.set(null);
+        void this.refreshGitHubAccounts();
         return Promise.resolve();
       }
       if (catalog && project?.ecosystem === 'flutter') {
@@ -834,6 +840,24 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (action === 'stop') return this.runner.stopProject(request);
     return this.runner.restartProject(request);
+  }
+
+  async refreshGitHubAccounts(): Promise<void> {
+    const request = ++this.githubAccountsRequest;
+    this.githubAccountsLoading.set(true);
+    try {
+      const catalog = await this.runner.listGitHubAccounts();
+      if (request === this.githubAccountsRequest) this.githubAccounts.set(catalog);
+    } catch {
+      if (request === this.githubAccountsRequest) {
+        this.githubAccounts.set({
+          available: false, accounts: [],
+          message: 'Não foi possível listar as contas do GitHub CLI. Verifique o gh e tente novamente.',
+        });
+      }
+    } finally {
+      if (request === this.githubAccountsRequest) this.githubAccountsLoading.set(false);
+    }
   }
 
   async launchVcliRelease(release: VcliReleaseOptions): Promise<void> {

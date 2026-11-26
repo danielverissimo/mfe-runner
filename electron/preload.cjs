@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const channels = Object.freeze({
   getSnapshot: 'runner:get-snapshot',
   listNodeVersions: 'runner:list-node-versions',
+  listGitHubAccounts: 'runner:list-github-accounts',
   listRuntimeInstallations: 'runner:list-runtime-installations',
   listFlutterDevices: 'runner:list-flutter-devices',
   listAndroidEmulators: 'runner:list-android-emulators',
@@ -75,6 +76,7 @@ function subscribe(channel, callback) {
 contextBridge.exposeInMainWorld('runnerApi', Object.freeze({
   getSnapshot: () => ipcRenderer.invoke(channels.getSnapshot),
   listNodeVersions: () => ipcRenderer.invoke(channels.listNodeVersions),
+  listGitHubAccounts: () => ipcRenderer.invoke(channels.listGitHubAccounts),
   listRuntimeInstallations: (input) =>
     ipcRenderer.invoke(channels.listRuntimeInstallations, input),
   listFlutterDevices: (input) =>

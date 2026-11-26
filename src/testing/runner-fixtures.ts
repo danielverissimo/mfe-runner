@@ -260,6 +260,7 @@ export function createBridgeFixture(
   const bridge = jasmine.createSpyObj<RunnerBridge>('RunnerBridge', [
     'getSnapshot',
     'listNodeVersions',
+    'listGitHubAccounts',
     'listRuntimeInstallations',
     'listFlutterDevices',
     'listAndroidEmulators',
@@ -320,6 +321,11 @@ export function createBridgeFixture(
     'onUpdateState',
   ]);
   bridge.getSnapshot.and.resolveTo(snapshot);
+  bridge.listGitHubAccounts.and.resolveTo({
+    available: true,
+    accounts: [{ login: 'example-user', active: true, state: 'success' }],
+    message: null,
+  });
   bridge.listNodeVersions.and.resolveTo({
     detected: true,
     manager: 'nvm-sh',

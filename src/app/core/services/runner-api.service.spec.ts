@@ -11,6 +11,13 @@ describe('RunnerApiService', () => {
 
   afterEach(() => delete window.runnerApi);
 
+  it('lists computer GitHub CLI accounts through a parameterless bridge intent', async () => {
+    const service = TestBed.inject(RunnerApiService);
+    const result = await service.listGitHubAccounts();
+    expect(window.runnerApi?.listGitHubAccounts).toHaveBeenCalledOnceWith();
+    expect(result.accounts).toEqual([{ login: 'example-user', active: true, state: 'success' }]);
+  });
+
   it('loads the v4 workspace snapshot through the constrained bridge', async () => {
     const service = TestBed.inject(RunnerApiService);
     await service.initialize();

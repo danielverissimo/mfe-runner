@@ -314,8 +314,15 @@ confirmation.
    **Publicar release**. Review inclusion of tracked working-tree changes.
    Untracked files are excluded unless their checkbox is selected (the VCLI
    orchestrator may include its own bootstrap tooling automatically).
-6. Optionally enter an already authenticated `gh` account. This is an account
-   name, never a token. The current active account is used when left blank.
+6. Optionally select an account from this computer's GitHub CLI installation.
+   The list loads when the dialog opens; **Atualizar contas** reloads it.
+   Accounts come from `gh auth status --hostname github.com --json hosts`,
+   independently of VCLI's own settings. Accounts with unavailable
+   authentication are disabled. The **Usar conta ativa do GitHub CLI** option
+   preserves the existing default. Selecting a specific account sends only its
+   login as `--gh-user`; refreshing never silently replaces a selected account
+   that disappeared. If no accounts are found, authenticate with `gh auth login`
+   and refresh. No token is requested or displayed by Runner.
    Optional public-key and release-notes files require absolute paths, without
    shell expansion such as `~`. Leave them empty to use the orchestrator's
    defaults. No private key or password is requested by Runner.

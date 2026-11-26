@@ -237,6 +237,26 @@ script identifiers resolve to the same authoritative profile, requiring the
 same options. Release launches have no application port or HTTP health check.
 Credentials are loaded by the VCLI script, outside the renderer contract.
 
+`electron/lib/github-accounts.mjs::listGitHubAccounts` discovers this computer's
+GitHub CLI accounts independently of VCLI's application configuration. The
+parameterless `runner:list-github-accounts` IPC uses the existing sender
+validation and preload allowlist. The native adapter resolves `gh` from PATH
+or conventional installation directories and runs bounded, shell-free
+`gh auth status --hostname github.com --json hosts --jq ...` arguments.
+The fixed jq projection and normalizer expose only `login`, `active`, and
+allowlisted authentication states. Raw CLI errors never cross IPC. No token
+command or account switch is used by the listing operation. The status command
+may contact GitHub to check authentication; account listings are not an offline
+VCLI account store. CLI execution has a 15-second timeout and 1 MiB output limit.
+
+`AppComponent::refreshGitHubAccounts` owns loading, retry and stale-response
+handling; `RunnerApiService::listGitHubAccounts` owns typed bridge delegation.
+`VcliReleaseDialogComponent` renders the existing shared select and refresh
+intent. A selected account must still be listed with successful authentication
+before submission, while the explicit active-account default omits `ghUser`.
+The release orchestrator retains authority over credentials and repository
+access. Listing accounts does not start a release or verify repository access.
+
 The existing authenticated supervisor captures output and exit status. Protocol
 v10 replaces daemons with older launch code and blocks release restart before
 stopping the task. Main-process workspace startup/restoration paths cannot

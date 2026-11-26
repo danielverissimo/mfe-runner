@@ -151,6 +151,10 @@ describe('AppComponent workspace experience', () => {
     });
     expect(window.runnerApi?.startProject).not.toHaveBeenCalled();
     expect(fixture.componentInstance.releaseContext()?.project.id).toBe(project.id);
+    await fixture.whenStable();
+    expect(window.runnerApi?.listGitHubAccounts).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.githubAccounts()?.accounts[0].login).toBe('example-user');
+    expect(fixture.componentInstance.githubAccountsLoading()).toBeFalse();
     const options = { version: '1.2.3', target: 'all' as const, mode: 'local' as const, dryRun: true, includeUntracked: false };
     const start = window.runnerApi!.startProject as jasmine.Spy;
     start.and.rejectWith(new Error('Falha de pré-requisito'));
@@ -163,6 +167,31 @@ describe('AppComponent workspace experience', () => {
     expect(fixture.componentInstance.releaseContext()).toBeNull();
     expect(fixture.componentInstance.section()).toBe('logs');
     expect(fixture.componentInstance.selectedLogProjectId()).toBe(project.id);
+  });
+
+  it('shows a safe account listing failure and supports retry without starting a release', async () => {
+    const bridge = window.runnerApi!.listGitHubAccounts as jasmine.Spy;
+    bridge.and.rejectWith(new Error('private diagnostic'));
+    await fixture.componentInstance.refreshGitHubAccounts();
+    expect(fixture.componentInstance.githubAccountsLoading()).toBeFalse();
+    expect(fixture.componentInstance.githubAccounts()?.message).not.toContain('private');
+    expect(fixture.componentInstance.githubAccounts()?.accounts).toEqual([]);
+    bridge.and.resolveTo({ available: true, accounts: [{ login: 'work-user', active: false, state: 'success' }], message: null });
+    await fixture.componentInstance.refreshGitHubAccounts();
+    expect(fixture.componentInstance.githubAccounts()?.accounts[0].login).toBe('work-user');
+    expect(window.runnerApi?.startProject).not.toHaveBeenCalled();
+  });
+
+  it('ignores stale account responses after opening a newer release dialog', async () => {
+    const bridge = window.runnerApi!.listGitHubAccounts as jasmine.Spy;
+    let resolveOld!: (value: { available: boolean; accounts: []; message: null }) => void;
+    bridge.and.returnValue(new Promise((resolve) => { resolveOld = resolve; }));
+    const oldRequest = fixture.componentInstance.refreshGitHubAccounts();
+    bridge.and.resolveTo({ available: true, accounts: [{ login: 'new-user', active: true, state: 'success' }], message: null });
+    await fixture.componentInstance.refreshGitHubAccounts();
+    resolveOld({ available: true, accounts: [], message: null });
+    await oldRequest;
+    expect(fixture.componentInstance.githubAccounts()?.accounts[0].login).toBe('new-user');
   });
 
   it('opens the Flutter destination modal and starts with the selected device', async () => {
